@@ -18,17 +18,19 @@ import java.util.Queue;
  * Spectral Residual 异常检测 UDF (IoTDB 2.0.7)
  * 
  * 优化版本：
- * 1. 使用滑动窗口处理，支持准实时检测
+ * 1. 使用历史数据滑动窗口处理，支持实时检测（只向前看）
  * 2. 局部归一化，适应非平稳时间序列
  * 3. Saliency map 高斯平滑，减少误报
+ * 4. 只返回检测到的异常数据点
  * 
  * 算法原理：
- * 1. 对滑动窗口内的时间序列进行傅里叶变换
+ * 1. 对滑动窗口内的历史时间序列进行傅里叶变换
  * 2. 计算幅度谱的对数
  * 3. 使用平均滤波器计算谱残差
  * 4. 通过逆傅里叶变换得到显著性图
  * 5. 对显著性图进行高斯平滑
  * 6. 使用局部统计量判断异常点
+ * 7. 仅输出异常点（非异常点不输出）
  * 
  * 使用示例:
  * SELECT SpectralResidualAnomalyDetector(value, 'window_size'='100', 'threshold'='3.0') 
@@ -39,12 +41,12 @@ public class SpectralResidualAnomalyDetector implements UDTF {
     private int windowSize;
     private double threshold;
     private int ampWindowSize;
-    private int slidingStep;
     private int scoreWindowSize;
     private Queue<Double> slidingWindow;
     private Queue<Long> slidingTimestamps;
-    private List<Double> allScores;
+    private List<Double> allValues;
     private List<Long> allTimestamps;
+    private List<Double> allScores;
     
     @Override
     public void validate(UDFParameterValidator validator) throws Exception {
@@ -58,7 +60,6 @@ public class SpectralResidualAnomalyDetector implements UDTF {
         this.windowSize = parameters.getIntOrDefault("window_size", 100);
         this.threshold = parameters.getDoubleOrDefault("threshold", 3.0);
         this.ampWindowSize = parameters.getIntOrDefault("amp_window_size", 5);
-        this.slidingStep = parameters.getIntOrDefault("sliding_step", 1);
         this.scoreWindowSize = parameters.getIntOrDefault("score_window_size", 50);
         
         if (this.windowSize <= 0) {
@@ -70,17 +71,15 @@ public class SpectralResidualAnomalyDetector implements UDTF {
         if (this.ampWindowSize <= 0 || this.ampWindowSize >= this.windowSize) {
             throw new Exception("amp_window_size must be positive and less than window_size");
         }
-        if (this.slidingStep <= 0) {
-            throw new Exception("sliding_step must be positive");
-        }
         if (this.scoreWindowSize <= 0) {
             throw new Exception("score_window_size must be positive");
         }
         
         this.slidingWindow = new LinkedList<>();
         this.slidingTimestamps = new LinkedList<>();
-        this.allScores = new ArrayList<>();
+        this.allValues = new ArrayList<>();
         this.allTimestamps = new ArrayList<>();
+        this.allScores = new ArrayList<>();
         
         configurations
             .setAccessStrategy(new RowByRowAccessStrategy())
@@ -98,6 +97,8 @@ public class SpectralResidualAnomalyDetector implements UDTF {
         
         slidingWindow.offer(value);
         slidingTimestamps.offer(timestamp);
+        allValues.add(value);
+        allTimestamps.add(timestamp);
         
         if (slidingWindow.size() >= windowSize) {
             double[] windowData = new double[windowSize];
@@ -108,16 +109,11 @@ public class SpectralResidualAnomalyDetector implements UDTF {
             
             double[] windowScores = spectralResidualWindow(windowData);
             
-            int centerIdx = windowSize / 2;
-            allScores.add(windowScores[centerIdx]);
+            double currentScore = windowScores[windowSize - 1];
+            allScores.add(currentScore);
             
-            Long[] timestampArray = slidingTimestamps.toArray(new Long[0]);
-            allTimestamps.add(timestampArray[centerIdx]);
-            
-            for (int i = 0; i < slidingStep && slidingWindow.size() > 0; i++) {
-                slidingWindow.poll();
-                slidingTimestamps.poll();
-            }
+            slidingWindow.poll();
+            slidingTimestamps.poll();
         }
     }
     
@@ -132,10 +128,14 @@ public class SpectralResidualAnomalyDetector implements UDTF {
             scores[i] = allScores.get(i);
         }
         
-        double[] anomalyFlags = localNormalization(scores);
+        boolean[] isAnomaly = detectAnomalies(scores);
         
-        for (int i = 0; i < anomalyFlags.length; i++) {
-            collector.putDouble(allTimestamps.get(i), anomalyFlags[i]);
+        int startIdx = windowSize - 1;
+        for (int i = 0; i < isAnomaly.length; i++) {
+            if (isAnomaly[i]) {
+                int dataIdx = startIdx + i;
+                collector.putDouble(allTimestamps.get(dataIdx), allValues.get(dataIdx));
+            }
         }
         
         if (slidingWindow != null) {
@@ -144,11 +144,14 @@ public class SpectralResidualAnomalyDetector implements UDTF {
         if (slidingTimestamps != null) {
             slidingTimestamps.clear();
         }
-        if (allScores != null) {
-            allScores.clear();
+        if (allValues != null) {
+            allValues.clear();
         }
         if (allTimestamps != null) {
             allTimestamps.clear();
+        }
+        if (allScores != null) {
+            allScores.clear();
         }
     }
     
@@ -191,13 +194,13 @@ public class SpectralResidualAnomalyDetector implements UDTF {
         return smoothedScores;
     }
     
-    private double[] localNormalization(double[] scores) {
+    private boolean[] detectAnomalies(double[] scores) {
         int n = scores.length;
-        double[] anomalyFlags = new double[n];
+        boolean[] isAnomaly = new boolean[n];
         
         for (int i = 0; i < n; i++) {
-            int start = Math.max(0, i - scoreWindowSize / 2);
-            int end = Math.min(n - 1, i + scoreWindowSize / 2);
+            int start = Math.max(0, i - scoreWindowSize);
+            int end = i;
             
             double localMean = 0.0;
             int count = 0;
@@ -214,10 +217,10 @@ public class SpectralResidualAnomalyDetector implements UDTF {
             localStd = Math.sqrt(localStd / count);
             
             double zScore = (scores[i] - localMean) / (localStd + 1e-10);
-            anomalyFlags[i] = zScore > threshold ? 1.0 : 0.0;
+            isAnomaly[i] = zScore > threshold;
         }
         
-        return anomalyFlags;
+        return isAnomaly;
     }
     
     private double[] gaussianSmooth(double[] data, int windowSize) {

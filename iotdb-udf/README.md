@@ -1,4 +1,4 @@
-# IoTDB Spectral Residual 异常检测 UDF
+﻿# IoTDB Spectral Residual 异常检测 UDF
 
 基于 Spectral Residual 算法的 IoTDB 时间序列异常检测用户自定义函数（UDF）。
 
@@ -10,29 +10,31 @@ Spectral Residual（频谱残差）是一种基于频域分析的异常检测算
 
 ### 算法原理
 
-1. **滑动窗口处理**：使用滑动窗口对时间序列进行分段处理，支持准实时检测
+1. **历史数据窗口处理**：使用历史数据滑动窗口（只向前看）对时间序列进行分段处理，支持实时检测
 2. **傅里叶变换**：将窗口内的时间序列从时域转换到频域
 3. **幅度谱计算**：计算频域信号的幅度谱并取对数
 4. **频谱残差**：通过平均滤波器计算谱残差，突出异常频率成分
 5. **显著性图**：通过逆傅里叶变换得到时域的显著性图
 6. **高斯平滑**：对显著性图进行高斯平滑，减少噪声和误报
-7. **局部归一化**：使用局部统计量（滑动窗口内的均值和标准差）进行归一化
+7. **局部归一化**：使用局部统计量（历史窗口内的均值和标准差）进行归一化
 8. **异常判定**：基于局部 z-score 和阈值判断异常点
+9. **仅输出异常**：只返回检测到的异常数据点，非异常点不输出
 
 ### 算法优势
 
 - 对周期性数据中的异常特别敏感
 - 无需训练，可直接应用
-- 滑动窗口处理，适应非平稳时间序列
+- 历史数据窗口处理，符合时序数据实时检测场景（无法预知未来数据）
 - 局部归一化，提高检测准确率
 - 高斯平滑，减少误报
-- 支持准实时检测
+- 支持实时检测
+- 只输出异常点，结果简洁明了
 
 ## 功能特性
 
 - 支持多种数值类型（INT32, INT64, FLOAT, DOUBLE）
 - 可配置窗口大小和检测阈值
-- 输出二值结果（1 表示异常，0 表示正常）
+- 只返回异常数据点的原始值（非异常点不输出）
 - 适用于实时和批量异常检测场景
 
 ## 构建步骤
@@ -96,40 +98,43 @@ SHOW FUNCTIONS;
 #### 基本使用（使用默认参数）
 
 ```sql
-SELECT value, label, sr_detect(value) AS is_anomaly FROM root.yahoo.real_1;
+SELECT sr_detect(value) AS anomaly_value FROM root.yahoo.real_1;
 ```
 
 默认参数：
 - `window_size`: 100（FFT 分析窗口大小）
 - `threshold`: 3.0（异常判定阈值，局部 z-score）
 - `amp_window_size`: 5（频谱平滑窗口）
-- `sliding_step`: 1（滑动步长）
 - `score_window_size`: 50（局部归一化窗口大小）
+
+**重要说明**：此 UDF 使用历史数据窗口（只向前看），只返回检测到的异常数据点的原始值，非异常点不会出现在结果中。如果需要同时查看原始数据和异常检测结果，请分别查询，否则会因为 IoTDB 的时间对齐机制导致非异常时间点显示 `null`。
 
 #### 自定义参数
 
 ```sql
-SELECT value, label, sr_detect(value, 'window_size'='50', 'threshold'='2.5') AS is_anomaly FROM root.yahoo.real_1;
+SELECT sr_detect(value, 'window_size'='50', 'threshold'='2.5') AS anomaly_value FROM root.yahoo.real_1;
 ```
 
 ```sql
-SELECT value, label, sr_detect(value, 'window_size'='100', 'threshold'='2.0') AS is_anomaly FROM root.yahoo.real_1;
+SELECT sr_detect(value, 'window_size'='100', 'threshold'='2.0') AS anomaly_value FROM root.yahoo.real_1;
 ```
 
 ```sql
-SELECT value, label, sr_detect(value, 'window_size'='200', 'threshold'='3.5') AS is_anomaly FROM root.yahoo.real_1;
+SELECT sr_detect(value, 'window_size'='200', 'threshold'='3.5') AS anomaly_value FROM root.yahoo.real_1;
 ```
 
-#### 筛选异常点
+#### 查看前 20 个异常点
 
 ```sql
-SELECT value, label, sr_detect(value) AS is_anomaly FROM root.yahoo.real_1 WHERE sr_detect(value) = 1.0;
+SELECT sr_detect(value) AS anomaly_value FROM root.yahoo.real_1 LIMIT 20;
 ```
 
-#### 查看前 20 条结果
+#### 同时查看原始数据（会产生时间对齐）
+
+如果需要对比原始数据和异常检测结果，可以这样查询，但会因为时间对齐导致非异常时间点显示 `null`：
 
 ```sql
-SELECT value, label, sr_detect(value) AS is_anomaly FROM root.yahoo.real_1 LIMIT 20;
+SELECT value, sr_detect(value) AS anomaly_value FROM root.yahoo.real_1;
 ```
 
 ### 4. 删除 UDF 函数
@@ -145,8 +150,7 @@ DROP FUNCTION sr_detect;
 | `window_size` | int | 100 | FFT 分析窗口大小（数据点数量）。较大的窗口适合长周期数据，较小的窗口适合短周期数据 |
 | `threshold` | double | 3.0 | 异常判定阈值（局部 z-score）。较小的值会检测出更多异常（更敏感），较大的值只检测明显异常 |
 | `amp_window_size` | int | 5 | 频谱平滑窗口大小。用于计算频谱残差时的平均滤波器窗口 |
-| `sliding_step` | int | 1 | 滑动步长。每次滑动多少个数据点。较大的步长可以提高性能但降低时间分辨率 |
-| `score_window_size` | int | 50 | 局部归一化窗口大小。用于计算局部均值和标准差的窗口大小 |
+| `score_window_size` | int | 50 | 局部归一化窗口大小。用于计算局部均值和标准差的窗口大小（只使用历史数据） |
 
 ## 参数调优建议
 
@@ -168,12 +172,6 @@ DROP FUNCTION sr_detect;
 - 通常保持默认值 5 即可
 - 较大的值会使频谱残差更平滑，但可能降低检测灵敏度
 - 必须小于 `window_size`
-
-### sliding_step（滑动步长）
-
-- **实时性要求高**：使用 1（每个数据点都检测，但性能开销大）
-- **平衡模式**：使用 5-10（推荐，在性能和时间分辨率之间平衡）
-- **批量处理**：使用 window_size/2（快速处理大量历史数据）
 
 ### score_window_size（局部归一化窗口）
 
@@ -264,10 +262,10 @@ A: Spectral Residual 算法对以下类型的异常特别敏感：
 
 ### Q: 可以用于实时检测吗？
 
-A: 可以，但需要注意：
+A: 可以，算法使用历史数据窗口（只向前看），符合实时检测场景：
 - 算法需要累积足够的数据点（至少达到 `window_size`）才能开始输出结果
 - 对于实时场景，建议使用较小的窗口（50-100）
-- 可以使用滑动窗口方式持续检测
+- 使用滑动窗口方式持续检测
 
 ### Q: 如何选择合适的窗口大小？
 
@@ -277,37 +275,29 @@ A: 建议步骤：
 3. 从较小的窗口开始测试，逐步调整
 4. 使用历史数据验证检测效果
 
+### Q: 为什么查询结果中有 null 值？
+
+A: 这是 IoTDB 的时间对齐机制导致的。此 UDF 只返回异常点，当你同时查询原始数据和 UDF 结果时（如 `SELECT value, sr_detect(value) FROM ...`），IoTDB 会对齐所有时间戳，非异常时间点的 UDF 列就会显示 `null`。
+
+解决方法：只查询 UDF 结果（`SELECT sr_detect(value) FROM ...`），这样只会返回异常点，不会有 `null`。
+
 ## 技术细节
 
 ### 算法实现
 
-- **滑动窗口处理**：使用队列实现滑动窗口，每次处理 `window_size` 个数据点
+- **历史数据窗口处理**：使用队列实现滑动窗口，每次处理 `window_size` 个历史数据点
 - **FFT 算法**：使用 Cooley-Tukey FFT 算法进行快速傅里叶变换
 - **自动填充**：自动将输入数据填充到 2 的幂次方长度
 - **复数运算**：使用自定义 Complex 类处理频域信号
 - **高斯平滑**：对 saliency map 应用高斯滤波器（窗口大小为 3，sigma = 0.5）
-- **局部归一化**：使用滑动窗口计算局部均值和标准差，计算局部 z-score
-
-### 优化特性
-
-1. **滑动窗口 vs 全局处理**
-   - 旧版本：对整个序列做一次 FFT，必须等所有数据到齐
-   - 新版本：滑动窗口处理，每个窗口输出中心点的异常分数
-
-2. **局部归一化 vs 全局归一化**
-   - 旧版本：使用全局均值和标准差，无法适应非平稳序列
-   - 新版本：使用局部统计量，适应时间序列的动态变化
-
-3. **Saliency Map 平滑**
-   - 旧版本：直接使用 IFFT 结果，容易产生噪声
-   - 新版本：应用高斯平滑，减少高频噪声和误报
+- **局部归一化**：使用历史数据窗口计算局部均值和标准差，计算局部 z-score
 
 ### 输出说明
 
-- 输出值为 0.0 或 1.0
-- 1.0 表示检测到异常
-- 0.0 表示正常数据点
-- 输出延迟为 `window_size / 2` 个数据点（窗口中心）
+- 只输出检测到异常的数据点
+- 输出值为异常点的原始值（不是异常分数或标记）
+- 非异常点不会出现在结果中
+- 输出延迟为 `window_size` 个数据点（需要累积足够的历史数据）
 
 ## 参考文献
 
