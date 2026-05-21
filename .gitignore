@@ -10,6 +10,8 @@ buildNumber.properties
 .mvn/timing.properties
 .mvn/wrapper/maven-wrapper.jar
 
+dataset/
+
 # IDE
 .idea/
 *.iml
@@ -81,3 +83,5 @@ build/
 *.zip
 *.tar.gz
 *.rar
+
+/iotdb/
