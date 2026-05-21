@@ -8,10 +8,10 @@ from iotdb.utils.Tablet import Tablet
 # 配置
 # ============================================
 
-CSV_PATH = "./dataset/Yahoo_S5_Data/A1Benchmark/real_2.csv"
+CSV_PATH = "./dataset/Yahoo_S5_Data/A1Benchmark/real_1.csv"
 
 DATABASE = "root.yahoo"
-DEVICE = "root.yahoo.real_2"
+DEVICE = "root.yahoo.real_1"
 
 IOTDB_HOST = "127.0.0.1"
 IOTDB_PORT = 6667
