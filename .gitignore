@@ -84,4 +84,8 @@ build/
 *.tar.gz
 *.rar
 
+# py-test's output files
+/py-test/*.png
+/py-test/*.txt
+
 /iotdb/
