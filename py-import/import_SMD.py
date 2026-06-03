@@ -17,18 +17,18 @@ IOTDB_PORT = 6667
 IOTDB_USER = "root"
 IOTDB_PASSWORD = "root"
 
-DATABASE = "root.msl"
-DEVICE = "root.msl.d1"
+DATABASE = "root.smd"
+DEVICE = "root.smd.d1"
 
-DATA_DIR = Path(__file__).resolve().parent / "dataset" / "MSL"
-TEST_NPY_PATH = DATA_DIR / "MSL_test.npy"
-LABEL_NPY_PATH = DATA_DIR / "MSL_test_label.npy"
+DATA_DIR = Path(__file__).resolve().parent / "dataset" / "SMD"
+TEST_NPY_PATH = DATA_DIR / "SMD_test.npy"
+LABEL_NPY_PATH = DATA_DIR / "SMD_test_label.npy"
 
 BATCH_SIZE = 1000
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Import MSL test data into IoTDB.")
+    parser = argparse.ArgumentParser(description="Import SMD test data into IoTDB.")
     parser.add_argument("--host", default=IOTDB_HOST)
     parser.add_argument("--port", type=int, default=IOTDB_PORT)
     parser.add_argument("--user", default=IOTDB_USER)
@@ -46,7 +46,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def load_msl_arrays(test_path, label_path):
+def load_smd_arrays(test_path, label_path):
     print("Loading npy files...")
     test_data = np.load(test_path)
     labels = np.load(label_path)
@@ -96,7 +96,7 @@ def create_schema(session, database, device, num_cols):
     print("Timeseries ready.")
 
 
-def import_msl_data(session, args, test_data, labels):
+def import_smd_data(session, args, test_data, labels):
     num_rows, num_cols = test_data.shape
 
     if args.force_recreate:
@@ -108,7 +108,7 @@ def import_msl_data(session, args, test_data, labels):
     measurements = [f"s{i}" for i in range(num_cols)] + ["label"]
     data_types = [TSDataType.DOUBLE] * num_cols + [TSDataType.INT32]
 
-    print("Start inserting MSL test data...")
+    print("Start inserting SMD test data...")
     timestamps = []
     values = []
     inserted = 0
@@ -136,19 +136,19 @@ def import_msl_data(session, args, test_data, labels):
         inserted += len(timestamps)
         print(f"Inserted {inserted}/{num_rows}")
 
-    print("MSL import finished.")
+    print("SMD import finished.")
 
 
 def main():
     args = parse_args()
-    test_data, labels = load_msl_arrays(args.test_path, args.label_path)
+    test_data, labels = load_smd_arrays(args.test_path, args.label_path)
 
     session = Session(args.host, args.port, args.user, args.password)
     session.open(False)
     print("Connected to IoTDB.")
 
     try:
-        import_msl_data(session, args, test_data, labels)
+        import_smd_data(session, args, test_data, labels)
     finally:
         session.close()
         print("Session closed.")

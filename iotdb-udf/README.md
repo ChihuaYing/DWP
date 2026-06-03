@@ -85,6 +85,14 @@ $IOTDB_HOME/sbin/start-standalone.sh
 
 ```sql
 CREATE FUNCTION sr_detect AS 'org.apache.iotdb.udf.SpectralResidualAnomalyDetector';
+
+
+CREATE FUNCTION IQR AS 'org.apache.iotdb.library.anomaly.UDTFIQR';
+
+CREATE FUNCTION LOF AS 'org.apache.iotdb.library.anomaly.UDTFLOF';
+
+CREATE FUNCTION TwoSidedFilter AS 'org.apache.iotdb.library.anomaly.UDTFTwoSidedFilter';
+
 ```
 
 ### 2. 查看已注册的函数
