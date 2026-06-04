@@ -12,6 +12,8 @@ buildNumber.properties
 
 py-import/dataset/*
 !py-import/dataset/.gitkeep
+py-import/test_results/*
+!py-import/test_results/.gitkeep
 
 # IDE
 .idea/
