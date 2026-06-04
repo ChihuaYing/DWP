@@ -11,13 +11,13 @@ IOTDB_PORT = 6667
 IOTDB_USER = "root"
 IOTDB_PASSWORD = "root"
 DEVICE = "root.nab.d1"
-UDF_NAME = "stan_detect"
+UDF_NAME = "STAN_DETECT_NAB_V2"
 DATA_DIR = Path(__file__).resolve().parent / "dataset" / "NAB"
-LABEL_JSON_CANDIDATES = [DATA_DIR / "combined_labels.json", DATA_DIR / "combined_windows.json"]
+LABEL_JSON_CANDIDATES = [DATA_DIR / "combined_labels.json"]
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Evaluate IoTDB UDF stan_detect on NAB.")
+    p = argparse.ArgumentParser(description="Evaluate IoTDB UDF STAN_detect on NAB.")
     p.add_argument("--host", default=IOTDB_HOST)
     p.add_argument("--port", type=int, default=IOTDB_PORT)
     p.add_argument("--user", default=IOTDB_USER)
@@ -29,27 +29,13 @@ def parse_args():
     p.add_argument("--categories", default="all")
     p.add_argument("--files", default="all")
     p.add_argument("--sensors", default="all")
-    p.add_argument("--window", type=int, default=96)
-    p.add_argument("--short-window", type=int, default=24)
-    p.add_argument("--long-window", type=int, default=96)
-    p.add_argument("--sensitivity", type=float, default=3.0)
-    p.add_argument("--min-threshold", type=float, default=2.5)
-    p.add_argument("--min-warmup", type=int, default=48)
-    p.add_argument("--confirmation", type=int, default=1)
-    p.add_argument("--cooldown", type=int, default=12)
-    p.add_argument("--spike-ratio", type=float, default=0.08)
-    p.add_argument("--max-alerts", type=int, default=0)
-    p.add_argument("--min-score", type=float, default=0.0)
-    p.add_argument("--global-sensitivity", type=float, default=3.0)
-    p.add_argument("--top-fraction", type=float, default=0.01)
-    p.add_argument("--seasonal-period", type=int, default=0)
-    p.add_argument("--min-series-variability", type=float, default=1e-8)
-    p.add_argument("--peak-ratio", type=float, default=0.88)
+    p.add_argument("--window", type=int, default=150)
+    p.add_argument("--sensitivity", type=float, default=4.5)
+    p.add_argument("--threshold", type=float, default=3.5)
     p.add_argument("--tolerance", type=int, default=0)
     p.add_argument("--top-k", type=int, default=10)
     p.add_argument("--print-sql", action="store_true")
     p.add_argument("--strict-labels", action="store_true")
-    p.add_argument("--point-label-mode", action="store_true")
     return p.parse_args()
 
 
@@ -228,34 +214,21 @@ def build_sql(args, sensor):
     return (
         f"SELECT {args.udf}({sensor}, "
         f"\"window\"=\"{args.window}\", "
-        f"\"shortWindow\"=\"{args.short_window}\", "
-        f"\"longWindow\"=\"{args.long_window}\", "
         f"\"sensitivity\"=\"{args.sensitivity}\", "
-        f"\"minThreshold\"=\"{args.min_threshold}\", "
-        f"\"minWarmup\"=\"{args.min_warmup}\", "
-        f"\"confirmation\"=\"{args.confirmation}\", "
-        f"\"cooldown\"=\"{args.cooldown}\", "
-        f"\"spikeRatio\"=\"{args.spike_ratio}\", "
-        f"\"maxAlerts\"=\"{args.max_alerts}\", "
-        f"\"minScore\"=\"{args.min_score}\", "
-        f"\"globalSensitivity\"=\"{args.global_sensitivity}\", "
-        f"\"topFraction\"=\"{args.top_fraction}\", "
-        f"\"seasonalPeriod\"=\"{args.seasonal_period}\", "
-        f"\"minSeriesVariability\"=\"{args.min_series_variability}\", "
-        f"\"peakRatio\"=\"{args.peak_ratio}\") "
+        f"\"threshold\"=\"{args.threshold}\") "
         f"FROM {args.device}"
     )
 
 
 def point_indices_from_windows(timestamps, windows, tolerance):
     parsed_windows = parse_windows(windows)
-    step = infer_step(timestamps)
     truth = set()
     for idx, ts in enumerate(timestamps):
         for start, end in parsed_windows:
             left = start
             right = end
             if tolerance > 0:
+                step = infer_step(timestamps)
                 left = start - step * tolerance
                 right = end + step * tolerance
             if left <= ts <= right:
@@ -298,7 +271,7 @@ def print_metrics(prefix, m):
 def run(session, args, csv_files, all_windows):
     results = []
     print("\n========== Evaluation Config ==========")
-    print(f"device: {args.device}\nudf: {args.udf}\nwindow: {args.window}\nshortWindow: {args.short_window}\nlongWindow: {args.long_window}\nsensitivity: {args.sensitivity}\nminThreshold: {args.min_threshold}\nminWarmup: {args.min_warmup}\nconfirmation: {args.confirmation}\ncooldown: {args.cooldown}\nspikeRatio: {args.spike_ratio}\nmaxAlerts: {args.max_alerts}\nminScore: {args.min_score}\nglobalSensitivity: {args.global_sensitivity}\ntopFraction: {args.top_fraction}\nseasonalPeriod: {args.seasonal_period}\nminSeriesVariability: {args.min_series_variability}\npeakRatio: {args.peak_ratio}\ntolerance: {args.tolerance}")
+    print(f"device: {args.device}\nudf: {args.udf}\nwindow: {args.window}\nsensitivity: {args.sensitivity}\nthreshold: {args.threshold}\ntolerance: {args.tolerance}")
     print("\n========== Per NAB File Result ==========")
     for index in parse_sensors(args.sensors, len(csv_files)):
         sensor, csv_path = f"s{index}", csv_files[index]

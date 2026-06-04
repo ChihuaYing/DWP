@@ -15,31 +15,28 @@ public class StanUDTFNABV2 implements UDTF {
 
   private static final double EPS = 1e-12;
   private static final double MAD_TO_STD = 1.4826;
+  private static final int MIN_WINDOW_SIZE = 20;
+  private static final double DEFAULT_SENSITIVITY = 4.5;
+  private static final double DEFAULT_THRESHOLD = 3.5;
+  private static final double MIN_VARIABILITY = 1e-8;
+  private static final double DIFF_WEIGHT = 0.25;
+  private static final double LEVEL_WEIGHT = 0.35;
+  private static final double RESIDUAL_WEIGHT = 0.40;
+  private static final double Z_SCORE_BOOST = 1.15;
 
   private Type inputType;
   private int windowSize;
-  private int warmupSize;
-  private int cooldown;
-  private int minConfirm;
-  private int seasonalPeriod;
-  private int maxAlerts;
   private double sensitivity;
-  private double minThreshold;
-  private double minScore;
-  private double trendWeight;
-  private double deviationWeight;
-  private double changeWeight;
-  private double seasonalWeight;
-  private double emaAlpha;
+  private double threshold;
   private double minSeriesVariability;
+  private double zScoreBoost;
+  private double diffWeight;
+  private double levelWeight;
+  private double residualWeight;
 
   private double[] buffer;
-  private long[] timestamps;
   private int head;
   private int count;
-  private double thresholdEma;
-  private int cooldownLeft;
-  private int alertsEmitted;
 
   @Override
   public void validate(UDFParameterValidator validator) throws Exception {
@@ -51,29 +48,18 @@ public class StanUDTFNABV2 implements UDTF {
   @Override
   public void beforeStart(UDFParameters parameters, UDTFConfigurations configurations) {
     inputType = parameters.getDataType(0);
-    windowSize = Math.max(20, parameters.getIntOrDefault("window", 100));
-    warmupSize = Math.max(windowSize, parameters.getIntOrDefault("minWarmup", windowSize));
-    cooldown = Math.max(0, parameters.getIntOrDefault("cooldown", Math.max(6, windowSize / 4)));
-    minConfirm = Math.max(1, parameters.getIntOrDefault("confirmation", 1));
-    seasonalPeriod = Math.max(0, parameters.getIntOrDefault("seasonalPeriod", 0));
-    maxAlerts = Math.max(0, parameters.getIntOrDefault("maxAlerts", 0));
-    sensitivity = Math.max(1.01, parameters.getDoubleOrDefault("sensitivity", 3.0));
-    minThreshold = Math.max(0.0, parameters.getDoubleOrDefault("minThreshold", 3.0));
-    minScore = Math.max(0.0, parameters.getDoubleOrDefault("minScore", 0.0));
-    trendWeight = parameters.getDoubleOrDefault("trendWeight", 0.25);
-    deviationWeight = parameters.getDoubleOrDefault("deviationWeight", 0.45);
-    changeWeight = parameters.getDoubleOrDefault("changeWeight", 0.30);
-    seasonalWeight = parameters.getDoubleOrDefault("seasonalWeight", 0.25);
-    emaAlpha = parameters.getDoubleOrDefault("emaAlpha", 0.08);
-    minSeriesVariability = parameters.getDoubleOrDefault("minSeriesVariability", 1e-8);
+    windowSize = Math.max(MIN_WINDOW_SIZE, parameters.getIntOrDefault("window", 64));
+    sensitivity = Math.max(1.01, parameters.getDoubleOrDefault("sensitivity", DEFAULT_SENSITIVITY));
+    threshold = Math.max(0.0, parameters.getDoubleOrDefault("threshold", DEFAULT_THRESHOLD));
+    minSeriesVariability = MIN_VARIABILITY;
+    zScoreBoost = Z_SCORE_BOOST;
+    diffWeight = DIFF_WEIGHT;
+    levelWeight = LEVEL_WEIGHT;
+    residualWeight = RESIDUAL_WEIGHT;
 
     buffer = new double[windowSize];
-    timestamps = new long[windowSize];
     head = 0;
     count = 0;
-    thresholdEma = 0.0;
-    cooldownLeft = 0;
-    alertsEmitted = 0;
 
     configurations.setAccessStrategy(new RowByRowAccessStrategy()).setOutputDataType(Type.DOUBLE);
   }
@@ -88,54 +74,33 @@ public class StanUDTFNABV2 implements UDTF {
     long time = row.getTime();
 
     if (count < windowSize) {
-      append(current, time);
+      append(current);
       return;
     }
 
-    WindowStats stats = stats();
+    RollingStats stats = stats();
     if (stats.scale <= minSeriesVariability) {
-      append(current, time);
+      append(current);
       return;
     }
 
     double previous = lastValue();
-    double mean = stats.median;
-    double robustZ = Math.abs(current - mean) / stats.scale;
+    double robustZ = Math.abs(current - stats.median) / stats.scale;
     double diffZ = Math.abs(current - previous) / stats.diffScale;
-    double trendZ = trendResidual(current, stats);
-    double seasonalZ = seasonalPeriod > 0 && count >= seasonalPeriod
-        ? Math.abs(current - valueAtLag(seasonalPeriod)) / Math.max(stats.seasonalScale, EPS)
-        : 0.0;
+    double residualZ = Math.abs(current - stats.predictNext()) / stats.residualScale;
 
-    double score = deviationWeight * robustZ + changeWeight * diffZ + trendWeight * trendZ + seasonalWeight * seasonalZ;
-    score = Math.max(score, Math.max(robustZ, diffZ));
+    double score = zScoreBoost * robustZ + diffWeight * diffZ + levelWeight * Math.max(0.0, robustZ - 1.0) + residualWeight * residualZ;
+    score = Math.max(score, Math.max(robustZ, residualZ));
 
-    if (count >= warmupSize) {
-      if (thresholdEma <= 0.0) {
-        thresholdEma = Math.max(minThreshold, score / sensitivity);
-      }
-      double threshold = Math.max(minThreshold, thresholdEma * sensitivity);
-      threshold = Math.max(threshold, minScore);
-      boolean anomaly = score >= threshold && cooldownLeft == 0;
-      if (anomaly && maxAlerts <= 0 || anomaly && alertsEmitted < maxAlerts) {
-        collector.putDouble(time, score);
-        alertsEmitted++;
-        cooldownLeft = cooldown;
-      }
-      if (!anomaly) {
-        thresholdEma = emaAlpha * score + (1.0 - emaAlpha) * thresholdEma;
-      }
-      if (cooldownLeft > 0) {
-        cooldownLeft--;
-      }
+    if (score >= threshold / sensitivity) {
+      collector.putDouble(time, score);
     }
 
-    append(current, time);
+    append(current);
   }
 
-  private void append(double value, long time) {
+  private void append(double value) {
     buffer[head] = value;
-    timestamps[head] = time;
     head = (head + 1) % windowSize;
     if (count < windowSize) {
       count++;
@@ -146,74 +111,39 @@ public class StanUDTFNABV2 implements UDTF {
     return buffer[(head - 1 + windowSize) % windowSize];
   }
 
-  private double valueAtLag(int lag) {
-    if (lag <= 0 || lag > count) {
-      return lastValue();
-    }
-    return buffer[(head - lag + windowSize) % windowSize];
-  }
-
-  private WindowStats stats() {
+  private RollingStats stats() {
     double[] values = new double[windowSize];
     for (int i = 0; i < windowSize; i++) {
       values[i] = buffer[(head + i) % windowSize];
     }
-    java.util.Arrays.sort(values);
-    double median = percentile(values, 0.5);
-    double q1 = percentile(values, 0.25);
-    double q3 = percentile(values, 0.75);
 
-    double[] dev = new double[windowSize];
-    for (int i = 0; i < windowSize; i++) {
-      dev[i] = Math.abs(values[i] - median);
-    }
-    java.util.Arrays.sort(dev);
-    double mad = percentile(dev, 0.5);
-    double scale = Math.max(MAD_TO_STD * mad, (q3 - q1) / 1.349);
+    double median = median(values);
+    double mad = mad(values, median);
+    double scale = Math.max(MAD_TO_STD * mad, EPS);
 
     double[] diffs = new double[windowSize - 1];
     for (int i = 1; i < windowSize; i++) {
       diffs[i - 1] = Math.abs(values[i] - values[i - 1]);
     }
-    java.util.Arrays.sort(diffs);
-    double diffScale = Math.max(MAD_TO_STD * percentile(diffs, 0.5), EPS);
+    double diffScale = Math.max(MAD_TO_STD * median(diffs), EPS);
 
-    double seasonalScale = scale;
-    if (seasonalPeriod > 0 && windowSize > seasonalPeriod) {
-      double[] seasonalDiffs = new double[windowSize - seasonalPeriod];
-      for (int i = seasonalPeriod; i < windowSize; i++) {
-        seasonalDiffs[i - seasonalPeriod] = Math.abs(values[i] - values[i - seasonalPeriod]);
-      }
-      java.util.Arrays.sort(seasonalDiffs);
-      seasonalScale = Math.max(MAD_TO_STD * percentile(seasonalDiffs, 0.5), scale);
-    }
-
-    return new WindowStats(median, Math.max(scale, EPS), diffScale, seasonalScale);
+    double residualScale = Math.max(scale, diffScale);
+    return new RollingStats(median, scale, diffScale, residualScale, values);
   }
 
-  private double trendResidual(double current, WindowStats stats) {
-    int len = Math.min(windowSize, Math.max(8, windowSize / 2));
-    if (len < 8 || count < len) {
-      return 0.0;
+  private double median(double[] values) {
+    double[] copy = values.clone();
+    java.util.Arrays.sort(copy);
+    return percentile(copy, 0.5);
+  }
+
+  private double mad(double[] values, double median) {
+    double[] dev = new double[values.length];
+    for (int i = 0; i < values.length; i++) {
+      dev[i] = Math.abs(values[i] - median);
     }
-    int start = (head - len + windowSize) % windowSize;
-    double meanX = (len - 1) / 2.0;
-    double meanY = 0.0;
-    for (int i = 0; i < len; i++) {
-      meanY += buffer[(start + i) % windowSize];
-    }
-    meanY /= len;
-    double num = 0.0;
-    double den = 0.0;
-    for (int i = 0; i < len; i++) {
-      double x = i - meanX;
-      double y = buffer[(start + i) % windowSize] - meanY;
-      num += x * y;
-      den += x * x;
-    }
-    double slope = den < EPS ? 0.0 : num / den;
-    double predicted = lastValue() + slope;
-    return Math.abs(current - predicted) / stats.scale;
+    java.util.Arrays.sort(dev);
+    return percentile(dev, 0.5);
   }
 
   private double percentile(double[] sortedValues, double q) {
@@ -245,17 +175,33 @@ public class StanUDTFNABV2 implements UDTF {
     }
   }
 
-  private static class WindowStats {
+  private static class RollingStats {
     private final double median;
     private final double scale;
     private final double diffScale;
-    private final double seasonalScale;
+    private final double residualScale;
+    private final double[] values;
 
-    private WindowStats(double median, double scale, double diffScale, double seasonalScale) {
+    private RollingStats(double median, double scale, double diffScale, double residualScale, double[] values) {
       this.median = median;
       this.scale = scale;
       this.diffScale = diffScale;
-      this.seasonalScale = seasonalScale;
+      this.residualScale = residualScale;
+      this.values = values;
+    }
+
+    private double predictNext() {
+      if (values.length < 3) {
+        return values[values.length - 1];
+      }
+      int n = values.length;
+      double last = values[n - 1];
+      double prev = values[n - 2];
+      double prev2 = values[n - 3];
+      double delta1 = last - prev;
+      double delta2 = prev - prev2;
+      double trend = 0.7 * delta1 + 0.3 * delta2;
+      return last + trend;
     }
   }
 }
