@@ -1,0 +1,569 @@
+{
+  "STAN_DETECT_NAB_V2": {
+    "overall": {
+      "tp": 53,
+      "fp": 72,
+      "fn": 63,
+      "precision": 0.424,
+      "recall": 0.45689655172413796,
+      "f1": 0.43983402489626555,
+      "label_count": 116,
+      "predicted_count": 127
+    },
+    "by_category": {
+      "artificialNoAnomaly": [
+        {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "label_count": 0,
+          "predicted_count": 0
+        },
+        {
+          "maxAlerts": 0,
+          "shortWindow": 96,
+          "longWindow": 384,
+          "minWarmup": 120,
+          "cooldown": 120,
+          "minScore": 5.8,
+          "globalSensitivity": 4.2,
+          "topFraction": 0.0025
+        }
+      ],
+      "artificialWithAnomaly": [
+        {
+          "tp": 1,
+          "fp": 3,
+          "fn": 5,
+          "precision": 0.25,
+          "recall": 0.16666666666666666,
+          "f1": 0.2,
+          "label_count": 6,
+          "predicted_count": 4
+        },
+        {
+          "shortWindow": 12,
+          "longWindow": 96,
+          "minWarmup": 48,
+          "cooldown": 24,
+          "maxAlerts": 1,
+          "minScore": 4.0,
+          "globalSensitivity": 2.8,
+          "topFraction": 0.0015
+        }
+      ],
+      "realAdExchange": [
+        {
+          "tp": 10,
+          "fp": 9,
+          "fn": 4,
+          "precision": 0.5263157894736842,
+          "recall": 0.7142857142857143,
+          "f1": 0.6060606060606061,
+          "label_count": 14,
+          "predicted_count": 19
+        },
+        {
+          "shortWindow": 96,
+          "longWindow": 384,
+          "minWarmup": 120,
+          "cooldown": 96,
+          "maxAlerts": 4,
+          "minScore": 5.6,
+          "globalSensitivity": 4.0,
+          "topFraction": 0.0025
+        }
+      ],
+      "realAWSCloudwatch": [
+        {
+          "tp": 15,
+          "fp": 29,
+          "fn": 15,
+          "precision": 0.3409090909090909,
+          "recall": 0.5,
+          "f1": 0.40540540540540543,
+          "label_count": 30,
+          "predicted_count": 45
+        },
+        {
+          "shortWindow": 192,
+          "longWindow": 768,
+          "minWarmup": 192,
+          "cooldown": 168,
+          "maxAlerts": 4,
+          "minScore": 6.2,
+          "globalSensitivity": 4.6,
+          "topFraction": 0.0018
+        }
+      ],
+      "realKnownCause": [
+        {
+          "tp": 7,
+          "fp": 6,
+          "fn": 12,
+          "precision": 0.5384615384615384,
+          "recall": 0.3684210526315789,
+          "f1": 0.4375,
+          "label_count": 19,
+          "predicted_count": 13
+        },
+        {
+          "shortWindow": 96,
+          "longWindow": 384,
+          "minWarmup": 120,
+          "cooldown": 144,
+          "maxAlerts": 3,
+          "minScore": 6.0,
+          "globalSensitivity": 4.4,
+          "topFraction": 0.002
+        }
+      ],
+      "realTraffic": [
+        {
+          "tp": 10,
+          "fp": 9,
+          "fn": 4,
+          "precision": 0.5263157894736842,
+          "recall": 0.7142857142857143,
+          "f1": 0.6060606060606061,
+          "label_count": 14,
+          "predicted_count": 19
+        },
+        {
+          "shortWindow": 96,
+          "longWindow": 384,
+          "minWarmup": 120,
+          "cooldown": 120,
+          "maxAlerts": 3,
+          "minScore": 5.8,
+          "globalSensitivity": 4.2,
+          "topFraction": 0.002
+        }
+      ],
+      "realTweets": [
+        {
+          "tp": 10,
+          "fp": 16,
+          "fn": 23,
+          "precision": 0.38461538461538464,
+          "recall": 0.30303030303030304,
+          "f1": 0.3389830508474576,
+          "label_count": 33,
+          "predicted_count": 27
+        },
+        {
+          "shortWindow": 96,
+          "longWindow": 384,
+          "minWarmup": 120,
+          "cooldown": 168,
+          "maxAlerts": 3,
+          "minScore": 6.2,
+          "globalSensitivity": 4.6,
+          "topFraction": 0.0018
+        }
+      ]
+    }
+  },
+  "IQR": {
+    "overall": {
+      "tp": 44,
+      "fp": 28,
+      "fn": 72,
+      "precision": 0.6111111111111112,
+      "recall": 0.3793103448275862,
+      "f1": 0.46808510638297873,
+      "label_count": 116,
+      "predicted_count": 79
+    },
+    "by_category": {
+      "artificialNoAnomaly": [
+        {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "label_count": 0,
+          "predicted_count": 0
+        },
+        {
+          "top_k": 1,
+          "compute": "batch"
+        }
+      ],
+      "artificialWithAnomaly": [
+        {
+          "tp": 2,
+          "fp": 1,
+          "fn": 4,
+          "precision": 0.6666666666666666,
+          "recall": 0.3333333333333333,
+          "f1": 0.4444444444444444,
+          "label_count": 6,
+          "predicted_count": 3
+        },
+        {
+          "top_k": 1,
+          "compute": "batch"
+        }
+      ],
+      "realAdExchange": [
+        {
+          "tp": 8,
+          "fp": 8,
+          "fn": 6,
+          "precision": 0.5,
+          "recall": 0.5714285714285714,
+          "f1": 0.5333333333333333,
+          "label_count": 14,
+          "predicted_count": 18
+        },
+        {
+          "top_k": 3,
+          "compute": "batch"
+        }
+      ],
+      "realAWSCloudwatch": [
+        {
+          "tp": 12,
+          "fp": 5,
+          "fn": 18,
+          "precision": 0.7058823529411765,
+          "recall": 0.4,
+          "f1": 0.5106382978723405,
+          "label_count": 30,
+          "predicted_count": 17
+        },
+        {
+          "top_k": 1,
+          "compute": "batch"
+        }
+      ],
+      "realKnownCause": [
+        {
+          "tp": 4,
+          "fp": 8,
+          "fn": 15,
+          "precision": 0.3333333333333333,
+          "recall": 0.21052631578947367,
+          "f1": 0.2580645161290323,
+          "label_count": 19,
+          "predicted_count": 14
+        },
+        {
+          "top_k": 2,
+          "compute": "batch"
+        }
+      ],
+      "realTraffic": [
+        {
+          "tp": 3,
+          "fp": 4,
+          "fn": 11,
+          "precision": 0.42857142857142855,
+          "recall": 0.21428571428571427,
+          "f1": 0.2857142857142857,
+          "label_count": 14,
+          "predicted_count": 7
+        },
+        {
+          "top_k": 1,
+          "compute": "batch"
+        }
+      ],
+      "realTweets": [
+        {
+          "tp": 15,
+          "fp": 2,
+          "fn": 18,
+          "precision": 0.8823529411764706,
+          "recall": 0.45454545454545453,
+          "f1": 0.6,
+          "label_count": 33,
+          "predicted_count": 20
+        },
+        {
+          "top_k": 2,
+          "compute": "batch"
+        }
+      ]
+    }
+  },
+  "LOF": {
+    "overall": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 116,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "label_count": 116,
+      "predicted_count": 0
+    },
+    "by_category": {
+      "artificialNoAnomaly": [
+        {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "label_count": 0,
+          "predicted_count": 0
+        },
+        {
+          "top_k": 1,
+          "udf_window": 10000,
+          "window": 24,
+          "k": 3
+        }
+      ],
+      "artificialWithAnomaly": [
+        {
+          "tp": 0,
+          "fp": 0,
+          "fn": 6,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "label_count": 6,
+          "predicted_count": 0
+        },
+        {
+          "top_k": 1,
+          "udf_window": 10000,
+          "window": 24,
+          "k": 3
+        }
+      ],
+      "realAdExchange": [
+        {
+          "tp": 0,
+          "fp": 0,
+          "fn": 14,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "label_count": 14,
+          "predicted_count": 0
+        },
+        {
+          "top_k": 1,
+          "udf_window": 10000,
+          "window": 24,
+          "k": 3
+        }
+      ],
+      "realAWSCloudwatch": [
+        {
+          "tp": 0,
+          "fp": 0,
+          "fn": 30,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "label_count": 30,
+          "predicted_count": 0
+        },
+        {
+          "top_k": 1,
+          "udf_window": 10000,
+          "window": 24,
+          "k": 3
+        }
+      ],
+      "realKnownCause": [
+        {
+          "tp": 0,
+          "fp": 0,
+          "fn": 19,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "label_count": 19,
+          "predicted_count": 0
+        },
+        {
+          "top_k": 1,
+          "udf_window": 10000,
+          "window": 24,
+          "k": 3
+        }
+      ],
+      "realTraffic": [
+        {
+          "tp": 0,
+          "fp": 0,
+          "fn": 14,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "label_count": 14,
+          "predicted_count": 0
+        },
+        {
+          "top_k": 1,
+          "udf_window": 10000,
+          "window": 24,
+          "k": 3
+        }
+      ],
+      "realTweets": [
+        {
+          "tp": 0,
+          "fp": 0,
+          "fn": 33,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "label_count": 33,
+          "predicted_count": 0
+        },
+        {
+          "top_k": 1,
+          "udf_window": 10000,
+          "window": 24,
+          "k": 3
+        }
+      ]
+    }
+  },
+  "TWOSIDEDFILTER": {
+    "overall": {
+      "tp": 0,
+      "fp": 0,
+      "fn": 116,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "label_count": 116,
+      "predicted_count": 0
+    },
+    "by_category": {
+      "artificialNoAnomaly": [
+        {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "label_count": 0,
+          "predicted_count": 0
+        },
+        {
+          "top_k": 1,
+          "len": 3,
+          "threshold": 0.2
+        }
+      ],
+      "artificialWithAnomaly": [
+        {
+          "tp": 0,
+          "fp": 0,
+          "fn": 6,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "label_count": 6,
+          "predicted_count": 0
+        },
+        {
+          "top_k": 1,
+          "len": 3,
+          "threshold": 0.2
+        }
+      ],
+      "realAdExchange": [
+        {
+          "tp": 0,
+          "fp": 0,
+          "fn": 14,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "label_count": 14,
+          "predicted_count": 0
+        },
+        {
+          "top_k": 1,
+          "len": 3,
+          "threshold": 0.2
+        }
+      ],
+      "realAWSCloudwatch": [
+        {
+          "tp": 0,
+          "fp": 0,
+          "fn": 30,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "label_count": 30,
+          "predicted_count": 0
+        },
+        {
+          "top_k": 1,
+          "len": 3,
+          "threshold": 0.2
+        }
+      ],
+      "realKnownCause": [
+        {
+          "tp": 0,
+          "fp": 0,
+          "fn": 19,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "label_count": 19,
+          "predicted_count": 0
+        },
+        {
+          "top_k": 1,
+          "len": 3,
+          "threshold": 0.2
+        }
+      ],
+      "realTraffic": [
+        {
+          "tp": 0,
+          "fp": 0,
+          "fn": 14,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "label_count": 14,
+          "predicted_count": 0
+        },
+        {
+          "top_k": 1,
+          "len": 3,
+          "threshold": 0.2
+        }
+      ],
+      "realTweets": [
+        {
+          "tp": 0,
+          "fp": 0,
+          "fn": 33,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "label_count": 33,
+          "predicted_count": 0
+        },
+        {
+          "top_k": 1,
+          "len": 3,
+          "threshold": 0.2
+        }
+      ]
+    }
+  }
+}

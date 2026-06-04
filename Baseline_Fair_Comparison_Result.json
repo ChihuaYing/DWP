@@ -1,0 +1,130 @@
+{
+  "Yahoo": {
+    "overall": {
+      "STAN_DETECT_NAB_V2": {
+        "tp": 1,
+        "fp": 6,
+        "fn": 1,
+        "precision": 0.14285714285714285,
+        "recall": 0.5,
+        "f1": 0.22222222222222224,
+        "label_count": 2,
+        "predicted_count": 7
+      },
+      "IQR": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "label_count": 2,
+        "predicted_count": 2
+      },
+      "LOF": {
+        "tp": 0,
+        "fp": 2,
+        "fn": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "label_count": 2,
+        "predicted_count": 2
+      },
+      "TWOSIDEDFILTER": {
+        "tp": 0,
+        "fp": 2,
+        "fn": 2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "label_count": 2,
+        "predicted_count": 2
+      }
+    },
+    "per_series": [
+      {
+        "series": "A1Benchmark/real_1.csv",
+        "labels": 2,
+        "device": "root.yahoo.real_1",
+        "results": {
+          "STAN_DETECT_NAB_V2": {
+            "method": "STAN_DETECT_NAB_V2",
+            "params": {
+              "shortWindow": 48,
+              "longWindow": 192,
+              "minWarmup": 96,
+              "cooldown": 24,
+              "maxAlerts": 50,
+              "minScore": 3.8,
+              "globalSensitivity": 3.0,
+              "topFraction": 0.02,
+              "peakRatio": 0.85,
+              "minSeriesVariability": 1e-08
+            },
+            "metrics": {
+              "tp": 1,
+              "fp": 6,
+              "fn": 1,
+              "precision": 0.14285714285714285,
+              "recall": 0.5,
+              "f1": 0.22222222222222224,
+              "label_count": 2,
+              "predicted_count": 7
+            }
+          },
+          "IQR": {
+            "method": "IQR",
+            "params": {
+              "compute": "batch"
+            },
+            "metrics": {
+              "tp": 2,
+              "fp": 0,
+              "fn": 0,
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0,
+              "label_count": 2,
+              "predicted_count": 2
+            }
+          },
+          "LOF": {
+            "method": "LOF",
+            "params": {
+              "window": 48,
+              "k": 3
+            },
+            "metrics": {
+              "tp": 0,
+              "fp": 2,
+              "fn": 2,
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "label_count": 2,
+              "predicted_count": 2
+            }
+          },
+          "TWOSIDEDFILTER": {
+            "method": "TWOSIDEDFILTER",
+            "params": {
+              "len": 3,
+              "threshold": 0.05
+            },
+            "metrics": {
+              "tp": 0,
+              "fp": 2,
+              "fn": 2,
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "label_count": 2,
+              "predicted_count": 2
+            }
+          }
+        }
+      }
+    ]
+  }
+}

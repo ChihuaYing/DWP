@@ -13,7 +13,7 @@ IOTDB_PASSWORD = "root"
 DEVICE = "root.nab.d1"
 UDF_NAME = "stan_detect"
 DATA_DIR = Path(__file__).resolve().parent / "dataset" / "NAB"
-LABEL_JSON_PATH = DATA_DIR / "combined_windows.json"
+LABEL_JSON_CANDIDATES = [DATA_DIR / "combined_labels.json", DATA_DIR / "combined_windows.json"]
 
 
 def parse_args():
@@ -25,21 +25,31 @@ def parse_args():
     p.add_argument("--device", default=DEVICE)
     p.add_argument("--udf", default=UDF_NAME)
     p.add_argument("--data-dir", type=Path, default=DATA_DIR)
-    p.add_argument("--label-path", type=Path, default=LABEL_JSON_PATH)
+    p.add_argument("--label-path", type=Path, default=None)
     p.add_argument("--categories", default="all")
     p.add_argument("--files", default="all")
     p.add_argument("--sensors", default="all")
-    p.add_argument("--window", type=int, default=300)
-    p.add_argument("--sensitivity", type=float, default=5.0)
-    p.add_argument("--min-threshold", type=float, default=5.0)
-    p.add_argument("--min-warmup", type=int, default=200)
-    p.add_argument("--confirmation", type=int, default=2)
-    p.add_argument("--cooldown", type=int, default=24)
+    p.add_argument("--window", type=int, default=96)
+    p.add_argument("--short-window", type=int, default=24)
+    p.add_argument("--long-window", type=int, default=96)
+    p.add_argument("--sensitivity", type=float, default=3.0)
+    p.add_argument("--min-threshold", type=float, default=2.5)
+    p.add_argument("--min-warmup", type=int, default=48)
+    p.add_argument("--confirmation", type=int, default=1)
+    p.add_argument("--cooldown", type=int, default=12)
     p.add_argument("--spike-ratio", type=float, default=0.08)
+    p.add_argument("--max-alerts", type=int, default=0)
+    p.add_argument("--min-score", type=float, default=0.0)
+    p.add_argument("--global-sensitivity", type=float, default=3.0)
+    p.add_argument("--top-fraction", type=float, default=0.01)
+    p.add_argument("--seasonal-period", type=int, default=0)
+    p.add_argument("--min-series-variability", type=float, default=1e-8)
+    p.add_argument("--peak-ratio", type=float, default=0.88)
     p.add_argument("--tolerance", type=int, default=0)
     p.add_argument("--top-k", type=int, default=10)
     p.add_argument("--print-sql", action="store_true")
     p.add_argument("--strict-labels", action="store_true")
+    p.add_argument("--point-label-mode", action="store_true")
     return p.parse_args()
 
 
@@ -107,9 +117,22 @@ def read_timestamps(csv_path):
         return [parse_dt(row["timestamp"]) for row in reader]
 
 
+def resolve_label_path(path):
+    if path is not None:
+        if path.exists():
+            return path
+        raise FileNotFoundError(f"NAB label file not found: {path}")
+    for candidate in LABEL_JSON_CANDIDATES:
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError(
+        "NAB label file not found. Expected combined_labels.json or combined_windows.json under dataset/NAB, "
+        "or pass --label-path explicitly."
+    )
+
+
 def load_windows(path):
-    if not path.exists():
-        raise FileNotFoundError(f"NAB label file not found: {path}. Put combined_windows.json under dataset/NAB or pass --label-path.")
+    path = resolve_label_path(path)
     with path.open("r", encoding="utf-8") as fp:
         data = json.load(fp)
     if not isinstance(data, dict):
@@ -132,7 +155,12 @@ def windows_for_file(all_windows, csv_path, data_dir, strict):
 
 
 def parse_windows(windows):
-    return [(parse_dt(start), parse_dt(end)) for start, end in windows]
+    if not windows:
+        return []
+    first = windows[0]
+    if isinstance(first, (list, tuple)) and len(first) == 2:
+        return [(parse_dt(start), parse_dt(end)) for start, end in windows]
+    return [(parse_dt(point), parse_dt(point)) for point in windows]
 
 
 def timestamp_index_to_datetime(timestamps, index):
@@ -200,49 +228,52 @@ def build_sql(args, sensor):
     return (
         f"SELECT {args.udf}({sensor}, "
         f"\"window\"=\"{args.window}\", "
+        f"\"shortWindow\"=\"{args.short_window}\", "
+        f"\"longWindow\"=\"{args.long_window}\", "
         f"\"sensitivity\"=\"{args.sensitivity}\", "
         f"\"minThreshold\"=\"{args.min_threshold}\", "
         f"\"minWarmup\"=\"{args.min_warmup}\", "
         f"\"confirmation\"=\"{args.confirmation}\", "
         f"\"cooldown\"=\"{args.cooldown}\", "
-        f"\"spikeRatio\"=\"{args.spike_ratio}\") "
+        f"\"spikeRatio\"=\"{args.spike_ratio}\", "
+        f"\"maxAlerts\"=\"{args.max_alerts}\", "
+        f"\"minScore\"=\"{args.min_score}\", "
+        f"\"globalSensitivity\"=\"{args.global_sensitivity}\", "
+        f"\"topFraction\"=\"{args.top_fraction}\", "
+        f"\"seasonalPeriod\"=\"{args.seasonal_period}\", "
+        f"\"minSeriesVariability\"=\"{args.min_series_variability}\", "
+        f"\"peakRatio\"=\"{args.peak_ratio}\") "
         f"FROM {args.device}"
     )
 
 
-def evaluate_window_events(predicted, timestamps, windows, tolerance):
+def point_indices_from_windows(timestamps, windows, tolerance):
     parsed_windows = parse_windows(windows)
-    predicted_datetimes = []
-    out_of_range_predictions = 0
-    for index in sorted(set(predicted)):
-        predicted_dt = timestamp_index_to_datetime(timestamps, index)
-        if predicted_dt is None:
-            out_of_range_predictions += 1
-        else:
-            predicted_datetimes.append(predicted_dt)
-
-    matched_windows = set()
-    matched_predictions = set()
     step = infer_step(timestamps)
-    for pred_index, predicted_dt in enumerate(predicted_datetimes):
-        for window_index, (start, end) in enumerate(parsed_windows):
+    truth = set()
+    for idx, ts in enumerate(timestamps):
+        for start, end in parsed_windows:
             left = start
             right = end
             if tolerance > 0:
                 left = start - step * tolerance
                 right = end + step * tolerance
-            if left <= predicted_dt <= right:
-                matched_windows.add(window_index)
-                matched_predictions.add(pred_index)
+            if left <= ts <= right:
+                truth.add(idx)
                 break
+    return truth
 
-    tp = len(matched_windows)
-    fn = len(parsed_windows) - tp
-    fp = len(predicted_datetimes) - len(matched_predictions) + out_of_range_predictions
+
+def evaluate_point_predictions(predicted, timestamps, windows, tolerance):
+    truth = point_indices_from_windows(timestamps, windows, tolerance)
+    predicted = {int(i) for i in predicted if 0 <= int(i) < len(timestamps)}
+    tp = len(predicted & truth)
+    fp = len(predicted - truth)
+    fn = len(truth - predicted)
     precision = tp / (tp + fp) if tp + fp else 0.0
     recall = tp / (tp + fn) if tp + fn else 0.0
     f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
-    return {"tp": tp, "fp": fp, "fn": fn, "precision": precision, "recall": recall, "f1": f1, "label_count": len(parsed_windows), "predicted_count": len(predicted_datetimes) + out_of_range_predictions}
+    return {"tp": tp, "fp": fp, "fn": fn, "precision": precision, "recall": recall, "f1": f1, "label_count": len(truth), "predicted_count": len(predicted)}
 
 
 def infer_step(timestamps):
@@ -267,7 +298,7 @@ def print_metrics(prefix, m):
 def run(session, args, csv_files, all_windows):
     results = []
     print("\n========== Evaluation Config ==========")
-    print(f"device: {args.device}\nudf: {args.udf}\nwindow: {args.window}\nsensitivity: {args.sensitivity}\nminThreshold: {args.min_threshold}\nminWarmup: {args.min_warmup}\nconfirmation: {args.confirmation}\ncooldown: {args.cooldown}\nspikeRatio: {args.spike_ratio}\ntolerance: {args.tolerance}")
+    print(f"device: {args.device}\nudf: {args.udf}\nwindow: {args.window}\nshortWindow: {args.short_window}\nlongWindow: {args.long_window}\nsensitivity: {args.sensitivity}\nminThreshold: {args.min_threshold}\nminWarmup: {args.min_warmup}\nconfirmation: {args.confirmation}\ncooldown: {args.cooldown}\nspikeRatio: {args.spike_ratio}\nmaxAlerts: {args.max_alerts}\nminScore: {args.min_score}\nglobalSensitivity: {args.global_sensitivity}\ntopFraction: {args.top_fraction}\nseasonalPeriod: {args.seasonal_period}\nminSeriesVariability: {args.min_series_variability}\npeakRatio: {args.peak_ratio}\ntolerance: {args.tolerance}")
     print("\n========== Per NAB File Result ==========")
     for index in parse_sensors(args.sensors, len(csv_files)):
         sensor, csv_path = f"s{index}", csv_files[index]
@@ -278,12 +309,12 @@ def run(session, args, csv_files, all_windows):
         if args.print_sql:
             print(sql)
         predicted = set(query_predictions(session, sql))
-        metrics = evaluate_window_events(predicted, timestamps, windows, args.tolerance)
+        metrics = evaluate_point_predictions(predicted, timestamps, windows, args.tolerance)
         results.append((sensor, rel, label_key, metrics))
         print_metrics(f"{sensor} {rel}", metrics)
     overall = add_metrics([x[3] for x in results])
     print("\n========== Overall Result On NAB ==========")
-    print(f"tested_series: {len(results)}\nlabel_windows: {overall['label_count']}\ndetected_timestamps: {overall['predicted_count']}\nTP: {overall['tp']}\nFP: {overall['fp']}\nFN: {overall['fn']}\nprecision: {overall['precision']:.6f}\nrecall: {overall['recall']:.6f}\nf1: {overall['f1']:.6f}")
+    print(f"tested_series: {len(results)}\nlabel_points: {overall['label_count']}\ndetected_points: {overall['predicted_count']}\nTP: {overall['tp']}\nFP: {overall['fp']}\nFN: {overall['fn']}\nprecision: {overall['precision']:.6f}\nrecall: {overall['recall']:.6f}\nf1: {overall['f1']:.6f}")
     print(f"\n========== Top {min(args.top_k, len(results))} NAB Files By F1 ==========")
     for sensor, rel, _, metrics in sorted(results, key=lambda x: (x[3]["f1"], x[3]["recall"], x[3]["precision"]), reverse=True)[: args.top_k]:
         print_metrics(f"{sensor} {rel}", metrics)
@@ -292,6 +323,7 @@ def run(session, args, csv_files, all_windows):
         print("\nFiles without label windows were treated as normal:")
         for rel in missing:
             print(rel)
+    return overall
 
 
 def main():
