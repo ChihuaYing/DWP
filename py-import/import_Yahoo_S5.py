@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pandas as pd
 
 from iotdb.Session import Session
@@ -8,7 +10,8 @@ from iotdb.utils.Tablet import Tablet
 # 配置
 # ============================================
 
-CSV_PATH = "./dataset/Yahoo_S5_Data/A1Benchmark/real_1.csv"
+DATA_DIR = Path(__file__).resolve().parent / "dataset" / "Yahoo_S5_Data"
+CSV_PATH = DATA_DIR / "A1Benchmark" / "real_1.csv"
 
 DATABASE = "root.yahoo"
 DEVICE = "root.yahoo.real_1"

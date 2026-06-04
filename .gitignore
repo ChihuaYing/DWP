@@ -10,7 +10,8 @@ buildNumber.properties
 .mvn/timing.properties
 .mvn/wrapper/maven-wrapper.jar
 
-dataset/
+py-import/dataset/*
+!py-import/dataset/.gitkeep
 
 # IDE
 .idea/

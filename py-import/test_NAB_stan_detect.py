@@ -109,7 +109,10 @@ def read_timestamps(csv_path):
 
 def load_windows(path):
     if not path.exists():
-        raise FileNotFoundError(f"NAB label file not found: {path}. Put combined_windows.json under dataset/NAB or pass --label-path.")
+        raise FileNotFoundError(
+            f"NAB label file not found: {path}. "
+            "Put combined_windows.json under py-import/dataset/NAB or pass --label-path."
+        )
     with path.open("r", encoding="utf-8") as fp:
         data = json.load(fp)
     if not isinstance(data, dict):
