@@ -1,6 +1,8 @@
 import argparse
 import csv
-import math
+import json
+import re
+from datetime import datetime
 from pathlib import Path
 
 from iotdb.Session import Session
@@ -15,7 +17,26 @@ DEVICE = "root.nab.d1"
 UDF_NAME = "STAN_DETECT_NAB_V2"
 DATA_DIR = Path(__file__).resolve().parent / "dataset" / "NAB" / "data"
 RESULTS_ROOT = Path(__file__).resolve().parent / "dataset" / "NAB" / "results"
+METADATA_DIR_NAME = "_iotdb_export_metadata"
 DETECTOR_NAME = "iotdbStanNABV2"
+PROTECTED_DETECTOR_NAMES = {
+    "ARTime",
+    "bayesChangePt",
+    "contextOSE",
+    "earthgeckoSkyline",
+    "expose",
+    "htmjava",
+    "knncad",
+    "null",
+    "numenta",
+    "numentaTM",
+    "random",
+    "randomCutForest",
+    "relativeEntropy",
+    "skyline",
+    "twitterADVec",
+    "windowedGaussian",
+}
 
 
 def parse_args():
@@ -41,21 +62,21 @@ def parse_args():
         metavar="KEY=VALUE",
         help=(
             "UDF parameter to pass inside the SQL function call. "
-            "Can be repeated, e.g. --udf-param shortWindow=96 --udf-param minScore=5.0."
+            "Can be repeated, e.g. --udf-param window=150 --udf-param threshold=3.5."
         ),
     )
-    parser.add_argument("--window", type=int, default=None, help="Deprecated shorthand for --udf-param window=...")
+    parser.add_argument("--window", type=int, default=None, help="Shorthand for --udf-param window=...")
     parser.add_argument(
         "--sensitivity",
         type=float,
         default=None,
-        help="Deprecated shorthand for --udf-param sensitivity=...",
+        help="Shorthand for --udf-param sensitivity=...",
     )
     parser.add_argument(
         "--threshold",
         type=float,
         default=None,
-        help="Deprecated shorthand for --udf-param threshold=...",
+        help="Shorthand for --udf-param threshold=...",
     )
     parser.add_argument(
         "--score-mode",
@@ -71,6 +92,11 @@ def parse_args():
         "--clean-detector-dir",
         action="store_true",
         help="Delete old CSV files under results/<detector-name> before exporting.",
+    )
+    parser.add_argument(
+        "--overwrite-existing",
+        action="store_true",
+        help="Overwrite existing NAB result CSV files for this detector and remove stale NAB score files.",
     )
     parser.add_argument("--print-sql", action="store_true")
     return parser.parse_args()
@@ -243,35 +269,159 @@ def format_score(score, mode):
     raise ValueError(f"Unsupported score mode: {mode}")
 
 
+def clean_legacy_metadata(detector_dir):
+    if not detector_dir.exists():
+        return
+    for metadata_name in ("export_manifest.json", "export_summary.csv"):
+        metadata_path = detector_dir / metadata_name
+        if metadata_path.exists():
+            metadata_path.unlink()
+
+
 def clean_detector_dir(detector_dir):
     if not detector_dir.exists():
         return
     for csv_path in detector_dir.rglob("*.csv"):
         csv_path.unlink()
+    clean_legacy_metadata(detector_dir)
+
+
+def clean_metadata_dir(metadata_dir):
+    if not metadata_dir.exists():
+        return
+    for path in metadata_dir.rglob("*"):
+        if path.is_file():
+            path.unlink()
+    for path in sorted((p for p in metadata_dir.rglob("*") if p.is_dir()), reverse=True):
+        path.rmdir()
+
+
+def clean_stale_score_files(detector_dir):
+    if not detector_dir.exists():
+        return
+    for score_path in detector_dir.glob("*_scores.csv"):
+        score_path.unlink()
+    clean_legacy_metadata(detector_dir)
 
 
 def write_results_file(out_path, rows, predictions, score_mode):
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    with out_path.open("w", encoding="utf-8", newline="") as fp:
+    tmp_path = out_path.with_name(out_path.name + ".tmp")
+    with tmp_path.open("w", encoding="utf-8", newline="") as fp:
         writer = csv.writer(fp)
         writer.writerow(["timestamp", "value", "anomaly_score"])
         for index, (timestamp, value) in enumerate(rows):
             writer.writerow([timestamp, value, format_score(predictions.get(index), score_mode)])
+    tmp_path.replace(out_path)
+
+
+def write_export_summary(metadata_dir, rows):
+    metadata_dir.mkdir(parents=True, exist_ok=True)
+    summary_path = metadata_dir / "export_summary.csv"
+    tmp_path = summary_path.with_name(summary_path.name + ".tmp")
+    with tmp_path.open("w", encoding="utf-8", newline="") as fp:
+        fieldnames = ["sensor", "relative_path", "rows", "detections", "output_path"]
+        writer = csv.DictWriter(fp, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+    tmp_path.replace(summary_path)
+
+
+def write_manifest(metadata_dir, args, udf_params, summary_rows):
+    metadata_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = metadata_dir / "export_manifest.json"
+    manifest = {
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "detector_name": args.detector_name,
+        "data_dir": str(args.data_dir),
+        "results_root": str(args.results_root),
+        "device": args.device,
+        "udf": args.udf,
+        "udf_params": [{"key": key, "value": str(value)} for key, value in udf_params],
+        "score_mode": args.score_mode,
+        "categories": args.categories,
+        "files": args.files,
+        "sensors": args.sensors,
+        "exported_files": len(summary_rows),
+        "total_detections": sum(row["detections"] for row in summary_rows),
+        "outputs": summary_rows,
+    }
+    tmp_path = manifest_path.with_name(manifest_path.name + ".tmp")
+    with tmp_path.open("w", encoding="utf-8") as fp:
+        json.dump(manifest, fp, ensure_ascii=False, indent=2)
+        fp.write("\n")
+    tmp_path.replace(manifest_path)
+
+
+def validate_detector_name(detector_name):
+    if detector_name in PROTECTED_DETECTOR_NAMES:
+        raise ValueError(
+            f"Detector name {detector_name!r} is a built-in NAB detector name. "
+            "Use a project-specific name to avoid overwriting bundled benchmark results."
+        )
+    if "_" in detector_name:
+        raise ValueError(
+            "NAB normalize() parses detector names poorly when they contain underscores. "
+            "Use a detector name without underscores, e.g. iotdbStanNABV2."
+        )
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*", detector_name):
+        raise ValueError(
+            "Detector name must contain only letters, numbers, and hyphens, "
+            "and must start with a letter or number."
+        )
+
+
+def existing_export_csvs(detector_dir):
+    if not detector_dir.exists():
+        return []
+    return [
+        path
+        for path in detector_dir.rglob("*.csv")
+        if not path.name.endswith("_scores.csv") and path.name != "export_summary.csv"
+    ]
+
+
+def metadata_dir_for(args):
+    return args.results_root / METADATA_DIR_NAME / args.detector_name
+
+
+def prepare_output_dirs(args):
+    detector_dir = args.results_root / args.detector_name
+    metadata_dir = metadata_dir_for(args)
+    if args.clean_detector_dir:
+        clean_detector_dir(detector_dir)
+        clean_metadata_dir(metadata_dir)
+        return detector_dir, metadata_dir
+
+    existing = existing_export_csvs(detector_dir)
+    if existing and not args.overwrite_existing:
+        examples = "\n".join(str(path) for path in existing[:5])
+        raise FileExistsError(
+            f"Detector result files already exist under {detector_dir}. "
+            "Use a new --detector-name, or pass --clean-detector-dir / --overwrite-existing.\n"
+            f"Existing examples:\n{examples}"
+        )
+    if args.overwrite_existing:
+        clean_stale_score_files(detector_dir)
+        clean_metadata_dir(metadata_dir)
+    else:
+        clean_legacy_metadata(detector_dir)
+    return detector_dir, metadata_dir
 
 
 def export_results(session, args, csv_files):
-    detector_dir = args.results_root / args.detector_name
-    if args.clean_detector_dir:
-        clean_detector_dir(detector_dir)
+    detector_dir, metadata_dir = prepare_output_dirs(args)
 
     udf_params = parse_udf_params(args)
     sensor_indices = parse_sensors(args.sensors, len(csv_files))
     exported = 0
     total_detections = 0
+    summary_rows = []
 
     print("\n========== NAB IoTDB UDF Export Config ==========")
     print(f"data_dir: {args.data_dir}")
     print(f"results_dir: {detector_dir}")
+    print(f"metadata_dir: {metadata_dir}")
     print(f"device: {args.device}")
     print(f"udf: {args.udf}")
     print("udf_params: " + (", ".join(f"{key}={value}" for key, value in udf_params) or "<none>"))
@@ -295,21 +445,31 @@ def export_results(session, args, csv_files):
 
         exported += 1
         total_detections += len(predictions)
+        summary_rows.append(
+            {
+                "sensor": sensor,
+                "relative_path": rel_posix,
+                "rows": len(rows),
+                "detections": len(predictions),
+                "output_path": str(out_path),
+            }
+        )
         print(f"{sensor} {rel_posix}: rows={len(rows)}, detections={len(predictions)}, output={out_path}")
+
+    write_export_summary(metadata_dir, summary_rows)
+    write_manifest(metadata_dir, args, udf_params, summary_rows)
 
     print("\n========== Export Summary ==========")
     print(f"exported_files: {exported}")
     print(f"total_detections: {total_detections}")
     print(f"detector_name: {args.detector_name}")
+    print(f"manifest: {metadata_dir / 'export_manifest.json'}")
+    print(f"summary: {metadata_dir / 'export_summary.csv'}")
 
 
 def main():
     args = parse_args()
-    if "_" in args.detector_name:
-        raise ValueError(
-            "NAB normalize() parses detector names poorly when they contain underscores. "
-            "Use a detector name without underscores, e.g. iotdbStanNABV2."
-        )
+    validate_detector_name(args.detector_name)
 
     csv_files = discover_files(args.data_dir, args.categories, args.files)
     print(f"Discovered {len(csv_files)} NAB csv files.")
