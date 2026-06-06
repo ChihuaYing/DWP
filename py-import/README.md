@@ -230,16 +230,120 @@ NAB 官方评分还会原地修改 `results/<detector-name>/...` 下的结果 CS
 
 ## 点级别评估
 
+脚本：
+
+```text
+py-import/test_NAB_stan_detect.py
+```
+
+它用于直接连接 IoTDB，执行指定 UDF，并用 NAB 标签计算点级别 precision/recall/F1。这个脚本不生成 NAB 官方 `results/<detector-name>` 文件，也不调用 NAB 官方 scorer。
+
+它会：
+
+1. 扫描 `--data-dir` 下的 NAB CSV。
+2. 按扫描顺序把 CSV 映射到 `s0, s1, ...`。
+3. 对每个 sensor 执行 IoTDB SQL：
+
+```sql
+SELECT STAN_DETECT_NAB_V2(s0, "window"="150", "sensitivity"="4.5", "threshold"="3.5") FROM root.nab.d1
+```
+
+4. 把 UDF 输出的 IoTDB 时间戳当作 NAB CSV 行号。
+5. 读取 CSV 中对应行的真实 timestamp。
+6. 和 `combined_labels.json` 中的异常点比较，统计 `TP / FP / FN / precision / recall / F1`。
+
 如果需要用 `combined_labels.json` 做点级别 precision/recall/F1，可以使用：
+
+```powershell
+python py-import/test_NAB_stan_detect.py `
+--data-dir py-import/dataset/NAB/data `
+--label-path py-import/dataset/NAB/labels/combined_labels.json `
+--udf STAN_DETECT_NAB_V2
+```
+
+这套评估和 NAB 官方评分不同。点级别评估适合调试误报/漏报；NAB 官方评分适合和 benchmark scoreboard 对比。
+
+### 常用参数
+
+| 参数 | 默认值 | 说明 |
+|---|---:|---|
+| `--device` | `root.nab.d1` | IoTDB 中 NAB 数据所在 device |
+| `--udf` | `STAN_DETECT_NAB_V2` | 要调用的 UDF 名称 |
+| `--data-dir` | `py-import/dataset/NAB` | NAB CSV 根目录；本项目通常应显式传 `py-import/dataset/NAB/data` |
+| `--label-path` | 自动查找 | 标签 JSON；点级别评估建议显式传 `py-import/dataset/NAB/labels/combined_labels.json` |
+| `--categories` | `all` | 只测试指定 NAB 分类，例如 `realKnownCause` |
+| `--files` | `all` | 只测试指定 CSV 文件，例如 `nyc_taxi.csv` |
+| `--sensors` | `all` | 只测试指定 sensor，例如 `s0,s1,s2` |
+| `--window` | `150` | 传给 UDF 的 `window` 参数 |
+| `--sensitivity` | `4.5` | 传给 UDF 的 `sensitivity` 参数 |
+| `--threshold` | `3.5` | 传给 UDF 的 `threshold` 参数 |
+| `--tolerance` | `0` | 点级别标签左右放宽的采样点数 |
+| `--top-k` | `10` | 输出 F1 排名前多少个文件 |
+| `--print-sql` | 关闭 | 打印实际执行的 SQL |
+| `--strict-labels` | 关闭 | 如果某个 CSV 找不到标签则报错；默认当作无异常序列 |
+
+### 小规模调试
+
+只测试人工无异常数据：
 
 ```powershell
 python py-import/test_NAB_stan_detect.py `
   --data-dir py-import/dataset/NAB/data `
   --label-path py-import/dataset/NAB/labels/combined_labels.json `
+  --categories artificialNoAnomaly `
+  --udf STAN_DETECT_NAB_V2 `
+  --print-sql
+```
+
+只测试 `s0` 到 `s4`：
+
+```powershell
+python py-import/test_NAB_stan_detect.py `
+  --data-dir py-import/dataset/NAB/data `
+  --label-path py-import/dataset/NAB/labels/combined_labels.json `
+  --sensors s0,s1,s2,s3,s4 `
   --udf STAN_DETECT_NAB_V2
 ```
 
-这套评估和 NAB 官方评分不同。点级别评估适合调试误报/漏报；NAB 官方评分适合和 benchmark scoreboard 对比。
+测试不同 UDF 参数：
+
+```powershell
+python py-import/test_NAB_stan_detect.py `
+  --data-dir py-import/dataset/NAB/data `
+  --label-path py-import/dataset/NAB/labels/combined_labels.json `
+  --udf STAN_DETECT_NAB_V2 `
+  --window 150 `
+  --sensitivity 4.5 `
+  --threshold 3.5
+```
+
+如果怀疑检测点和人工标签有少量时间偏移，可以用 `--tolerance` 做辅助诊断：
+
+```powershell
+python py-import/test_NAB_stan_detect.py `
+  --data-dir py-import/dataset/NAB/data `
+  --label-path py-import/dataset/NAB/labels/combined_labels.json `
+  --udf STAN_DETECT_NAB_V2 `
+  --tolerance 2
+```
+
+`--tolerance 2` 的含义是：每个标签点左右各放宽 2 个采样间隔。它不是 NAB 官方功能，只是这个点级别评估脚本自己的宽松匹配逻辑。
+
+### 和 NAB 官方评分的区别
+
+`test_NAB_stan_detect.py` 推荐使用 `combined_labels.json`，目标是点级别 F1：
+
+```text
+预测行号 == 标签行号
+```
+
+NAB 官方评分使用 `combined_windows.json`，目标是实时检测窗口分数：
+
+```text
+窗口内越早报警分数越高，窗口外报警扣分
+```
+
+不要只把 `--label-path` 换成 `combined_windows.json` 就认为得到了 NAB 官方分数。这个脚本即使用窗口标签，也只是把窗口内所有点展开成 truth 点再算 precision/recall/F1，和 NAB 官方 scorer 不是同一种评估。
 
 ## 大规模实验建议
 
