@@ -14,6 +14,7 @@ py-import/dataset/*
 !py-import/dataset/.gitkeep
 py-import/test_results/*
 !py-import/test_results/.gitkeep
+py-import/STANNABV2-pics/
 
 # IDE
 .idea/
