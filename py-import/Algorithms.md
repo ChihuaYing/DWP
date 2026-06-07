@@ -477,3 +477,205 @@ cooldown
 - 参数化 score 权重
 - 输出更多可解释调试分数，至少在 debug 模式下输出 `robustZ/diffZ/residualZ`
 - 减少每行排序和临时数组创建，降低大窗口下的计算开销
+
+## StanUDTFNABV3
+
+源码位置：
+
+```text
+iotdb-udf/src/main/java/org/apache/iotdb/udf/StanUDTFNABV3.java
+```
+
+V3 是基于 V2 的一次定向改造，目标是先解决两个明确问题：
+
+1. 删除 `sensitivity`，消除 `threshold / sensitivity` 造成的参数冗余。
+2. 增加可选周期建模，降低正常周期边界上的误报。
+
+### 参数
+
+| 参数 | 默认值 | 约束 | 作用 |
+|---|---:|---|---|
+| `window` | `64` | `>= 20` | 本地鲁棒统计窗口 |
+| `threshold` | `3.5` | `> 0` | 最终异常分数阈值 |
+| `seasonalPeriod` | `0` | `>= 0` | 周期长度；`0` 表示关闭周期建模 |
+| `seasonalLookback` | `7` | `>= 1` | 使用过去多少个周期的同相位点 |
+| `minSeasonalSamples` | `3` | `>= 1` | 启用周期统计所需的最少同相位样本数 |
+
+示例：
+
+```sql
+SELECT STAN_DETECT_NAB_V3(
+  s0,
+  'window'='64',
+  'threshold'='3.5',
+  'seasonalPeriod'='288',
+  'seasonalLookback'='7',
+  'minSeasonalSamples'='3'
+) AS anomaly_score
+FROM root.nab.d1;
+```
+
+如果 NAB 数据是 5 分钟粒度，则一天的周期为：
+
+```text
+24 * 60 / 5 = 288
+```
+
+因此人工日周期数据可以先测试：
+
+```text
+seasonalPeriod = 288
+```
+
+### 与 V2 的主要区别
+
+#### 删除 sensitivity
+
+V2 的判定逻辑是：
+
+```text
+score >= threshold / sensitivity
+```
+
+V3 改为：
+
+```text
+score >= threshold
+```
+
+这样 `threshold` 是唯一的异常分数门槛，参数语义更直接。
+
+#### 增加同相位周期统计
+
+如果 `seasonalPeriod > 0`，V3 会收集过去同一周期相位的值：
+
+```text
+current - seasonalPeriod
+current - 2 * seasonalPeriod
+current - 3 * seasonalPeriod
+...
+```
+
+最多取 `seasonalLookback` 个样本。若样本数少于 `minSeasonalSamples`，周期建模暂时不启用，退回本地窗口逻辑。
+
+周期统计使用和 V2 类似的 median/MAD：
+
+```text
+seasonalMedian = median(same_phase_values)
+seasonalScale = 1.4826 * MAD(same_phase_values)
+seasonalZ = abs(current - seasonalMedian) / seasonalScale
+```
+
+当周期统计可用时，V3 使用 `seasonalZ` 作为主要水平偏离分数；否则使用本地窗口的 robust z-score。
+
+#### 周期门控 transition score
+
+V2 中 `diffZ` 和 `residualZ` 对周期边界很敏感。例如方波或日周期在固定时刻发生正常跳变，也会产生较大的相邻差分和预测残差。
+
+V3 在周期统计可用时，用同相位水平异常程度对 transition score 做门控：
+
+```text
+transitionGate = min(1.0, levelZ / threshold)
+```
+
+然后：
+
+```text
+score =
+  1.15 * levelZ
+  + 0.35 * max(0, levelZ - 1)
+  + transitionGate * (0.25 * diffZ + 0.40 * residualZ)
+```
+
+含义：
+
+- 如果当前点相对过去同一相位是正常的，`levelZ` 较小，`transitionGate` 接近 0。
+- 即使相邻差分很大，也会被抑制。
+- 如果当前点相对过去同一相位也异常，`levelZ` 较大，transition score 会重新参与判定。
+
+这正是为了减少 `artificialNoAnomaly/art_daily_*` 这类正常周期边界的误报。
+
+### 需要注意的行为
+
+#### 冷启动更长
+
+本地窗口冷启动仍然是：
+
+```text
+count < window
+```
+
+但周期建模还需要：
+
+```text
+seasonalPeriod * minSeasonalSamples
+```
+
+个历史点后才可能启用。
+
+例如：
+
+```text
+seasonalPeriod = 288
+minSeasonalSamples = 3
+```
+
+至少需要约 3 天的同相位历史，周期统计才会启用。
+
+#### 历史缓冲区变大
+
+V3 的历史缓冲区大小为：
+
+```text
+max(window, seasonalPeriod * seasonalLookback)
+```
+
+例如：
+
+```text
+window = 64
+seasonalPeriod = 288
+seasonalLookback = 7
+```
+
+需要保存：
+
+```text
+288 * 7 = 2016
+```
+
+个历史点。
+
+#### 周期建模关闭时接近 V2，但不完全等价
+
+当：
+
+```text
+seasonalPeriod = 0
+```
+
+V3 不使用周期统计，整体思路接近 V2。
+
+但由于 V3 删除了 `sensitivity`，默认判定门槛从 V2 的：
+
+```text
+3.5 / 4.5 = 0.777...
+```
+
+变成：
+
+```text
+3.5
+```
+
+因此 V3 默认会明显更保守。
+
+### 后续可验证的问题
+
+开发完成后优先验证：
+
+1. `seasonalPeriod=288` 是否减少 `artificialNoAnomaly` 中 s0/s1/s2 的误报。
+2. `seasonalPeriod=0` 时，V3 是否仍能检测 V2 擅长的尖峰/阶跃异常。
+3. `threshold` 在 `2.0, 3.0, 3.5, 5.0` 附近的敏感性。
+4. `seasonalLookback` 对短序列和长序列的影响。
+5. 点级 F1 和 NAB 官方 score 是否出现不同趋势。
