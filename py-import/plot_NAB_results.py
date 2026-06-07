@@ -17,7 +17,7 @@ DATA_DIR = NAB_DIR / "data"
 RESULTS_ROOT = NAB_DIR / "results"
 LABELS_PATH = NAB_DIR / "labels" / "combined_labels.json"
 WINDOWS_PATH = NAB_DIR / "labels" / "combined_windows.json"
-OUTPUT_DIR = Path(__file__).resolve().parent / "STANNABV2-pics"
+OUTPUT_DIR = Path(__file__).resolve().parent / "STANNABV3-pics"
 
 
 def parse_args():
