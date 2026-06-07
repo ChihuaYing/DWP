@@ -500,6 +500,11 @@ V3 是基于 V2 的一次定向改造，目标是先解决两个明确问题：
 | `seasonalPeriod` | `0` | `>= 0` | 周期长度；`0` 表示关闭周期建模 |
 | `seasonalLookback` | `7` | `>= 1` | 使用过去多少个周期的同相位点 |
 | `minSeasonalSamples` | `3` | `>= 1` | 启用周期统计所需的最少同相位样本数 |
+| `autoSeasonal` | `true` | `true/false` | 当 `seasonalPeriod=0` 时，是否用自相关自动估计周期 |
+| `autoSeasonalMinPeriod` | `20` | `>= 2` | 自动周期搜索的最小 lag |
+| `autoSeasonalMaxPeriod` | `512` | `>= 2` | 自动周期搜索的最大 lag |
+| `autoSeasonalMinCorrelation` | `0.75` | `(0, 1]` | 接受自动周期所需的最小自相关系数 |
+| `autoSeasonalRecomputeInterval` | `64` | `>= 1` | 每隔多少行重新估计一次周期 |
 
 示例：
 
@@ -547,7 +552,7 @@ score >= threshold
 
 #### 增加同相位周期统计
 
-如果 `seasonalPeriod > 0`，V3 会收集过去同一周期相位的值：
+如果 `seasonalPeriod > 0`，V3 会优先使用用户指定的周期，并收集过去同一周期相位的值：
 
 ```text
 current - seasonalPeriod
@@ -567,6 +572,69 @@ seasonalZ = abs(current - seasonalMedian) / seasonalScale
 ```
 
 当周期统计可用时，V3 使用 `seasonalZ` 作为主要水平偏离分数；否则使用本地窗口的 robust z-score。
+
+#### 自相关自动估计周期
+
+如果：
+
+```text
+seasonalPeriod = 0
+autoSeasonal = true
+```
+
+V3 会尝试用历史序列的自相关系数自动估计周期。
+
+搜索范围：
+
+```text
+autoSeasonalMinPeriod <= lag <= autoSeasonalMaxPeriod
+```
+
+对每个候选 `lag`，计算：
+
+```text
+corr(lag) =
+  sum((x[t] - mean) * (x[t-lag] - mean))
+  / sqrt(sum((x[t] - mean)^2) * sum((x[t-lag] - mean)^2))
+```
+
+选择自相关系数最大的 `lag`。如果最大相关系数满足：
+
+```text
+corr(lag) >= autoSeasonalMinCorrelation
+```
+
+则把该 `lag` 作为当前自动周期。
+
+为了避免历史不足时误选短周期，自动估计至少需要积累：
+
+```text
+autoSeasonalMaxPeriod * minSeasonalSamples
+```
+
+个历史点。默认参数下是：
+
+```text
+512 * 3 = 1536
+```
+
+个点。
+
+估计出的周期不会每一行都重算，而是每隔：
+
+```text
+autoSeasonalRecomputeInterval
+```
+
+行更新一次。默认每 64 行更新一次。
+
+如果用户显式设置：
+
+```text
+seasonalPeriod > 0
+```
+
+则不会使用自动估计结果。
 
 #### 周期门控 transition score
 
@@ -630,6 +698,12 @@ V3 的历史缓冲区大小为：
 max(window, seasonalPeriod * seasonalLookback)
 ```
 
+如果启用自动周期且没有手动指定 `seasonalPeriod`，缓冲区大小为：
+
+```text
+max(window, autoSeasonalMaxPeriod * seasonalLookback)
+```
+
 例如：
 
 ```text
@@ -646,12 +720,28 @@ seasonalLookback = 7
 
 个历史点。
 
+默认自动周期参数下：
+
+```text
+autoSeasonalMaxPeriod = 512
+seasonalLookback = 7
+```
+
+会保存：
+
+```text
+512 * 7 = 3584
+```
+
+个历史点。
+
 #### 周期建模关闭时接近 V2，但不完全等价
 
 当：
 
 ```text
 seasonalPeriod = 0
+autoSeasonal = false
 ```
 
 V3 不使用周期统计，整体思路接近 V2。

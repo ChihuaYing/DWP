@@ -21,6 +21,11 @@ public class StanUDTFNABV3 implements UDTF {
   private static final int DEFAULT_SEASONAL_PERIOD = 0;
   private static final int DEFAULT_SEASONAL_LOOKBACK = 7;
   private static final int DEFAULT_MIN_SEASONAL_SAMPLES = 3;
+  private static final boolean DEFAULT_AUTO_SEASONAL = true;
+  private static final int DEFAULT_AUTO_SEASONAL_MIN_PERIOD = 20;
+  private static final int DEFAULT_AUTO_SEASONAL_MAX_PERIOD = 512;
+  private static final double DEFAULT_AUTO_SEASONAL_MIN_CORRELATION = 0.75;
+  private static final int DEFAULT_AUTO_SEASONAL_RECOMPUTE_INTERVAL = 64;
   private static final double MIN_VARIABILITY = 1e-8;
   private static final double DIFF_WEIGHT = 0.25;
   private static final double LEVEL_WEIGHT = 0.35;
@@ -33,7 +38,15 @@ public class StanUDTFNABV3 implements UDTF {
   private int seasonalPeriod;
   private int seasonalLookback;
   private int minSeasonalSamples;
+  private boolean autoSeasonal;
+  private int autoSeasonalMinPeriod;
+  private int autoSeasonalMaxPeriod;
+  private double autoSeasonalMinCorrelation;
+  private int autoSeasonalRecomputeInterval;
   private int historyCapacity;
+  private int estimatedSeasonalPeriod;
+  private long rowsSeen;
+  private long lastSeasonalEstimateAt;
 
   private double minSeriesVariability;
   private double zScoreBoost;
@@ -71,7 +84,24 @@ public class StanUDTFNABV3 implements UDTF {
         .validate(
             value -> parseInt(value, DEFAULT_MIN_SEASONAL_SAMPLES) >= 1,
             "attribute 'minSeasonalSamples' must be an integer greater than or equal to 1",
-            parameters.getString("minSeasonalSamples"));
+            parameters.getString("minSeasonalSamples"))
+        .validate(
+            value -> parseInt(value, DEFAULT_AUTO_SEASONAL_MIN_PERIOD) >= 2,
+            "attribute 'autoSeasonalMinPeriod' must be an integer greater than or equal to 2",
+            parameters.getString("autoSeasonalMinPeriod"))
+        .validate(
+            value -> parseInt(value, DEFAULT_AUTO_SEASONAL_MAX_PERIOD) >= 2,
+            "attribute 'autoSeasonalMaxPeriod' must be an integer greater than or equal to 2",
+            parameters.getString("autoSeasonalMaxPeriod"))
+        .validate(
+            value -> parseDouble(value, DEFAULT_AUTO_SEASONAL_MIN_CORRELATION) > 0.0
+                && parseDouble(value, DEFAULT_AUTO_SEASONAL_MIN_CORRELATION) <= 1.0,
+            "attribute 'autoSeasonalMinCorrelation' must be a number in (0, 1]",
+            parameters.getString("autoSeasonalMinCorrelation"))
+        .validate(
+            value -> parseInt(value, DEFAULT_AUTO_SEASONAL_RECOMPUTE_INTERVAL) >= 1,
+            "attribute 'autoSeasonalRecomputeInterval' must be an integer greater than or equal to 1",
+            parameters.getString("autoSeasonalRecomputeInterval"));
   }
 
   @Override
@@ -82,6 +112,17 @@ public class StanUDTFNABV3 implements UDTF {
     seasonalPeriod = Math.max(0, parameters.getIntOrDefault("seasonalPeriod", DEFAULT_SEASONAL_PERIOD));
     seasonalLookback = Math.max(1, parameters.getIntOrDefault("seasonalLookback", DEFAULT_SEASONAL_LOOKBACK));
     minSeasonalSamples = Math.max(1, parameters.getIntOrDefault("minSeasonalSamples", DEFAULT_MIN_SEASONAL_SAMPLES));
+    autoSeasonal = parseBoolean(parameters.getString("autoSeasonal"), DEFAULT_AUTO_SEASONAL);
+    autoSeasonalMinPeriod =
+        Math.max(2, parameters.getIntOrDefault("autoSeasonalMinPeriod", DEFAULT_AUTO_SEASONAL_MIN_PERIOD));
+    autoSeasonalMaxPeriod =
+        Math.max(autoSeasonalMinPeriod, parameters.getIntOrDefault("autoSeasonalMaxPeriod", DEFAULT_AUTO_SEASONAL_MAX_PERIOD));
+    autoSeasonalMinCorrelation =
+        Math.max(EPS, Math.min(1.0, parameters.getDoubleOrDefault(
+            "autoSeasonalMinCorrelation", DEFAULT_AUTO_SEASONAL_MIN_CORRELATION)));
+    autoSeasonalRecomputeInterval =
+        Math.max(1, parameters.getIntOrDefault(
+            "autoSeasonalRecomputeInterval", DEFAULT_AUTO_SEASONAL_RECOMPUTE_INTERVAL));
     historyCapacity = Math.max(windowSize, seasonalHistoryCapacity());
 
     minSeriesVariability = MIN_VARIABILITY;
@@ -93,6 +134,9 @@ public class StanUDTFNABV3 implements UDTF {
     buffer = new double[historyCapacity];
     head = 0;
     count = 0;
+    estimatedSeasonalPeriod = 0;
+    rowsSeen = 0L;
+    lastSeasonalEstimateAt = Long.MIN_VALUE;
 
     configurations.setAccessStrategy(new RowByRowAccessStrategy()).setOutputDataType(Type.DOUBLE);
   }
@@ -112,7 +156,8 @@ public class StanUDTFNABV3 implements UDTF {
     }
 
     RollingStats localStats = localStats();
-    SeasonalStats seasonalStats = seasonalStats();
+    int activeSeasonalPeriod = activeSeasonalPeriod();
+    SeasonalStats seasonalStats = seasonalStats(activeSeasonalPeriod);
     RollingStats stats = chooseStats(localStats, seasonalStats);
 
     if (stats.scale <= minSeriesVariability) {
@@ -143,10 +188,13 @@ public class StanUDTFNABV3 implements UDTF {
   }
 
   private int seasonalHistoryCapacity() {
-    if (seasonalPeriod <= 0) {
+    if (seasonalPeriod > 0) {
+      return seasonalPeriod * seasonalLookback;
+    }
+    if (!autoSeasonal) {
       return 0;
     }
-    return seasonalPeriod * seasonalLookback;
+    return autoSeasonalMaxPeriod * seasonalLookback;
   }
 
   private void append(double value) {
@@ -155,6 +203,7 @@ public class StanUDTFNABV3 implements UDTF {
     if (count < historyCapacity) {
       count++;
     }
+    rowsSeen++;
   }
 
   private double valueByAge(int age) {
@@ -169,19 +218,100 @@ public class StanUDTFNABV3 implements UDTF {
     return stats(values);
   }
 
-  private SeasonalStats seasonalStats() {
-    if (seasonalPeriod <= 0) {
+  private int activeSeasonalPeriod() {
+    if (seasonalPeriod > 0) {
+      return seasonalPeriod;
+    }
+    if (!autoSeasonal) {
+      return 0;
+    }
+    return estimateSeasonalPeriod();
+  }
+
+  private int estimateSeasonalPeriod() {
+    int requiredHistory = autoSeasonalMaxPeriod * Math.max(1, minSeasonalSamples);
+    if (count < requiredHistory) {
+      estimatedSeasonalPeriod = 0;
+      return 0;
+    }
+
+    int maxLag = Math.min(autoSeasonalMaxPeriod, count / Math.max(1, minSeasonalSamples));
+    if (maxLag < autoSeasonalMinPeriod) {
+      estimatedSeasonalPeriod = 0;
+      return 0;
+    }
+
+    if (estimatedSeasonalPeriod > 0
+        && rowsSeen - lastSeasonalEstimateAt < autoSeasonalRecomputeInterval) {
+      return estimatedSeasonalPeriod;
+    }
+
+    double[] values = historyValues(count);
+    double mean = mean(values);
+    double bestCorrelation = Double.NEGATIVE_INFINITY;
+    int bestLag = 0;
+
+    for (int lag = autoSeasonalMinPeriod; lag <= maxLag; lag++) {
+      double correlation = autocorrelation(values, mean, lag);
+      if (correlation > bestCorrelation) {
+        bestCorrelation = correlation;
+        bestLag = lag;
+      }
+    }
+
+    lastSeasonalEstimateAt = rowsSeen;
+    if (bestLag > 0 && bestCorrelation >= autoSeasonalMinCorrelation) {
+      estimatedSeasonalPeriod = bestLag;
+    } else {
+      estimatedSeasonalPeriod = 0;
+    }
+    return estimatedSeasonalPeriod;
+  }
+
+  private double[] historyValues(int length) {
+    double[] values = new double[length];
+    for (int i = 0; i < length; i++) {
+      values[i] = valueByAge(length - i);
+    }
+    return values;
+  }
+
+  private double mean(double[] values) {
+    double mean = 0.0;
+    for (int i = 0; i < values.length; i++) {
+      mean += (values[i] - mean) / (i + 1);
+    }
+    return mean;
+  }
+
+  private double autocorrelation(double[] values, double mean, int lag) {
+    double numerator = 0.0;
+    double leftDenominator = 0.0;
+    double rightDenominator = 0.0;
+    for (int i = lag; i < values.length; i++) {
+      double left = values[i] - mean;
+      double right = values[i - lag] - mean;
+      numerator += left * right;
+      leftDenominator += left * left;
+      rightDenominator += right * right;
+    }
+    double denominator = Math.sqrt(leftDenominator * rightDenominator);
+    return denominator <= EPS ? 0.0 : numerator / denominator;
+  }
+
+  private SeasonalStats seasonalStats(int activeSeasonalPeriod) {
+    if (activeSeasonalPeriod <= 0) {
       return SeasonalStats.unavailable();
     }
 
-    int samples = Math.min(seasonalLookback, count / seasonalPeriod);
+    int samples = Math.min(seasonalLookback, count / activeSeasonalPeriod);
     if (samples < minSeasonalSamples) {
       return SeasonalStats.unavailable();
     }
 
     double[] values = new double[samples];
     for (int i = 0; i < samples; i++) {
-      values[i] = valueByAge(seasonalPeriod * (i + 1));
+      values[i] = valueByAge(activeSeasonalPeriod * (i + 1));
     }
 
     RollingStats stats = stats(values);
@@ -282,6 +412,16 @@ public class StanUDTFNABV3 implements UDTF {
       return ((Number) value).doubleValue();
     }
     return Double.parseDouble(value.toString());
+  }
+
+  private static boolean parseBoolean(Object value, boolean defaultValue) {
+    if (value == null) {
+      return defaultValue;
+    }
+    if (value instanceof Boolean) {
+      return (Boolean) value;
+    }
+    return Boolean.parseBoolean(value.toString());
   }
 
   private static class SeasonalStats {
