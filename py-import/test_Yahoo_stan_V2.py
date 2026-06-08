@@ -40,6 +40,7 @@ def parse_args():
     p.add_argument("--tolerance", type=int, default=0, help="Timestamp-index tolerance in sample points.")
     p.add_argument("--top-k", type=int, default=10)
     p.add_argument("--print-sql", action="store_true")
+    p.add_argument("--print-files", action="store_true", help="Print one metrics line for every Yahoo csv file.")
     return p.parse_args()
 
 
@@ -310,6 +311,8 @@ def run(session, args, yahoo_files):
         f"sensitivity: {args.sensitivity}\nthreshold: {args.threshold}\ntolerance: {args.tolerance}"
     )
     print("\n========== Per Yahoo S5 File Result ==========")
+    if not args.print_files:
+        print("Per-file output is disabled. Use --print-files to show every csv file.")
 
     for benchmark_key, csv_path in yahoo_files:
         device = device_for_csv(args.database, benchmark_key, csv_path)
@@ -324,7 +327,8 @@ def run(session, args, yahoo_files):
         metrics = evaluate_predictions(predicted, timestamps, truth, args.tolerance)
         results.append((benchmark_key, relative_name, metrics))
         benchmark_metrics[benchmark_key].append(metrics)
-        print_metrics(f"{benchmark_key.upper()} {relative_name}", metrics)
+        if args.print_files:
+            print_metrics(f"{benchmark_key.upper()} {relative_name}", metrics)
 
     print("\n========== Result By Benchmark ==========")
     for benchmark_key in sorted(benchmark_metrics):
