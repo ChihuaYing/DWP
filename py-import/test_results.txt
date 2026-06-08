@@ -303,4 +303,3 @@ TP: 449
 FP: 1839
 FN: 595
 
-python py-import/test_Yahoo_stan_V2.py --benchmarks A2 --sweep-threshold --window 150 --sensitivity 4.5 --threshold-start 5 --threshold-end 200 --threshold-step 5 --top-k 0

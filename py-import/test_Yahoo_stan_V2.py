@@ -333,6 +333,21 @@ def safe_name(text):
     return re.sub(r"[^A-Za-z0-9._-]+", "_", text)
 
 
+def write_threshold_sweep_csv(rows, output_path):
+    with output_path.open("w", encoding="utf-8", newline="") as fp:
+        writer = csv.DictWriter(fp, fieldnames=["threshold", "f1", "prec", "recall"])
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(
+                {
+                    "threshold": f"{row['threshold']:g}",
+                    "f1": f"{row['f1']:.12g}",
+                    "prec": f"{row['precision']:.12g}",
+                    "recall": f"{row['recall']:.12g}",
+                }
+            )
+
+
 def plot_threshold_sweep(rows, args, best_row):
     args.sweep_output_dir.mkdir(parents=True, exist_ok=True)
     thresholds = [row["threshold"] for row in rows]
@@ -367,9 +382,11 @@ def plot_threshold_sweep(rows, args, best_row):
         f"w{args.window}_s{args.sensitivity}_{timestamp}.png"
     )
     output_path = args.sweep_output_dir / file_name
+    csv_output_path = output_path.with_suffix(".csv")
     fig.savefig(output_path, dpi=140)
+    write_threshold_sweep_csv(rows, csv_output_path)
     plt.close(fig)
-    return output_path
+    return output_path, csv_output_path
 
 
 def run_threshold_sweep(session, args, yahoo_files):
@@ -406,7 +423,7 @@ def run_threshold_sweep(session, args, yahoo_files):
         )
 
     best_row = max(rows, key=lambda row: (row["f1"], row["precision"], row["recall"]))
-    output_path = plot_threshold_sweep(rows, args, best_row)
+    output_path, csv_output_path = plot_threshold_sweep(rows, args, best_row)
 
     print("\n========== Best Threshold ==========")
     print(f"best_threshold: {best_row['threshold']:g}")
@@ -418,6 +435,7 @@ def run_threshold_sweep(session, args, yahoo_files):
     print(f"FP: {best_row['fp']}")
     print(f"FN: {best_row['fn']}")
     print(f"plot: {output_path}")
+    print(f"csv: {csv_output_path}")
     return best_row
 
 
