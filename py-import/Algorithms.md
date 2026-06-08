@@ -873,3 +873,49 @@ STANNABV2 使用 `window=150`、`sensitivity=4.5`、`top-k=0`，并对每个 Yah
 | STANNABV2 (threshold=21) | 0.196241 | 0.430077 | 0.269508 | 2288 | 449 | 1839 | 595 |
 
 分集合调参后，STANNABV2 在 A3、A4 上明显优于内置 baseline，在 A1 上低于 KSIGMA 但高于 IQR，在 A2 上略低于 KSIGMA、略高于 IQR。A4 仍是最困难的集合，STANNABV2 虽然提高了 F1，但 FP 仍然较多。
+
+## Yahoo S5 Baseline 与 STANV1 分集合对比（tolerance=3）
+
+STANV1 使用 `test_Yahoo_stan_V1.py --grid-search`，分别在 A1-A4 上扫描 `window`、`minThreshold`、`sensitivity`，每个子集合取点级 F1 最高的配置。Baseline 使用 `test_Yahoo_baseline.py --tolerance 3` 的结果。这里的 `tolerance=3` 表示预测点落在真实异常点前后 3 个采样点内即可计为命中。
+
+### A1
+
+| 算法 | 超参 | Precision | Recall | F1 | 检测点数 | TP | FP | FN |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| IQR | default | 0.276666 | 0.691176 | 0.395157 | 4247 | 1175 | 3072 | 525 |
+| KSIGMA | default | 0.695035 | 0.391218 | 0.500639 | 846 | 588 | 258 | 915 |
+| TWOSIDEDFILTER | default | 0.046139 | 0.310568 | 0.080342 | 9363 | 432 | 8931 | 959 |
+| OUTLIER | `r=5.0,k=4,w=10,s=5` | 0.031193 | 0.825701 | 0.060114 | 56648 | 1767 | 54881 | 373 |
+| STANV1 | `window=400,minThreshold=3,sensitivity=2.01` | 0.577042 | 0.363281 | 0.445865 | 967 | 558 | 409 | 978 |
+
+### A2
+
+| 算法 | 超参 | Precision | Recall | F1 | 检测点数 | TP | FP | FN |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| IQR | default | 0.994764 | 0.407725 | 0.578387 | 191 | 190 | 1 | 276 |
+| KSIGMA | default | 0.995146 | 0.439914 | 0.610119 | 206 | 205 | 1 | 261 |
+| TWOSIDEDFILTER | default | 0.010386 | 0.993696 | 0.020557 | 121416 | 1261 | 120155 | 8 |
+| OUTLIER | `r=5.0,k=4,w=10,s=5` | 0.011738 | 1.000000 | 0.023204 | 141928 | 1666 | 140262 | 0 |
+| STANV1 | `window=375,minThreshold=2.5,sensitivity=2.51` | 0.973545 | 0.814159 | 0.886747 | 378 | 368 | 10 | 84 |
+
+### A3
+
+| 算法 | 超参 | Precision | Recall | F1 | 检测点数 | TP | FP | FN |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| IQR | default | 0.992063 | 0.132696 | 0.234082 | 126 | 125 | 1 | 817 |
+| KSIGMA | default | 1.000000 | 0.115711 | 0.207422 | 109 | 109 | 0 | 833 |
+| TWOSIDEDFILTER | default | 0.037388 | 0.916716 | 0.071846 | 83610 | 3126 | 80484 | 284 |
+| OUTLIER | `r=5.0,k=4,w=10,s=5` | 0.038765 | 1.000000 | 0.074637 | 167470 | 6492 | 160978 | 0 |
+| STANV1 | `window=200,minThreshold=2,sensitivity=3.01` | 0.888699 | 0.548626 | 0.678431 | 584 | 519 | 65 | 427 |
+
+### A4
+
+| 算法 | 超参 | Precision | Recall | F1 | 检测点数 | TP | FP | FN |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| IQR | default | 0.085962 | 0.200000 | 0.120243 | 2536 | 218 | 2318 | 872 |
+| KSIGMA | default | 0.249453 | 0.109091 | 0.151798 | 457 | 114 | 343 | 931 |
+| TWOSIDEDFILTER | default | 0.040830 | 0.941206 | 0.078265 | 93314 | 3810 | 89504 | 238 |
+| OUTLIER | `r=5.0,k=4,w=10,s=5` | 0.042500 | 0.999860 | 0.081534 | 167460 | 7117 | 160343 | 1 |
+| STANV1 | `window=200,minThreshold=1.9,sensitivity=3.01` | 0.560624 | 0.440982 | 0.493658 | 833 | 467 | 366 | 592 |
+
+在 `tolerance=3` 的评价标准下，STANV1 在 A2、A3、A4 上明显优于 4 个 baseline；A1 上仍低于 KSIGMA，但高于 IQR、TWOSIDEDFILTER 和 OUTLIER。A1 的最优配置偏向较大窗口和较高 precision，recall 仍偏低；A2-A4 的 STANV1 通过较少检测点获得了更好的 precision-recall 平衡。
