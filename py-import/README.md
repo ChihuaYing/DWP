@@ -370,3 +370,85 @@ NAB 原始 `runner.normalize()` 里通过文件名拆分 detector 名称，带�
 ### 只导出部分文件能不能跑 NAB 官方评分？
 
 不建议。NAB 官方 `score/normalize` 默认面向完整 corpus。部分文件适合调试导出和 SQL；正式评分请导出全部 58 个 NAB CSV。
+
+## Yahoo S5 上测试 STAN_DETECT_NAB_V2
+
+脚本：
+
+```text
+py-import/test_Yahoo_stan_V2.py
+```
+
+前提：IoTDB 服务端已启动，Yahoo S5 数据已按 `import_Yahoo_S5_All.py` 的默认结构导入到 `root.yahoo` 下。每个 CSV 对应一个 device：
+
+```text
+root.yahoo.a1.real_1.value
+root.yahoo.a1.real_1.label
+root.yahoo.a2.synthetic_1.value
+root.yahoo.a2.synthetic_1.label
+root.yahoo.a3.ts1.value
+root.yahoo.a4.ts1.value
+```
+
+A1/A2 在 IoTDB 中带 `label`，但测试脚本实际从本地 Yahoo CSV 读取标签；A3/A4 在 IoTDB 中只需要有 `value`。A4 的真实标签按 `anomaly == 1 or changepoint == 1` 计算。
+
+测试全部 Yahoo S5：
+
+```powershell
+python py-import/test_Yahoo_stan_V2.py
+```
+
+只测试某个 benchmark 或文件：
+
+```powershell
+python py-import/test_Yahoo_stan_V2.py `
+  --benchmarks A1 `
+  --files real_1
+```
+
+测试不同 UDF 参数：
+
+```powershell
+python py-import/test_Yahoo_stan_V2.py `
+  --window 150 `
+  --sensitivity 4.5 `
+  --threshold 3.5
+```
+
+脚本会输出每个 CSV 的点级 `precision / recall / F1`，以及 A1-A4 分组汇总和 Yahoo S5 总体汇总。
+
+## Yahoo S5 上测试 STAN_DETECT_NAB_V3
+
+脚本：
+
+```text
+py-import/test_Yahoo_stan_V3.py
+```
+
+数据存储方式和 V2 相同，仍然要求 Yahoo S5 已导入到 `root.yahoo` 下，例如 `root.yahoo.a1.real_1.value`、`root.yahoo.a3.ts1.value`。脚本默认调用 IoTDB 中的 `STAN_DETECT_NAB_V3`。
+
+测试全部 Yahoo S5：
+
+```powershell
+python py-import/test_Yahoo_stan_V3.py
+```
+
+只测试某个文件：
+
+```powershell
+python py-import/test_Yahoo_stan_V3.py `
+  --benchmarks A1 `
+  --files real_1
+```
+
+测试不同 V3 参数：
+
+```powershell
+python py-import/test_Yahoo_stan_V3.py `
+  --window 150 `
+  --threshold 3.5 `
+  --seasonal-period 0 `
+  --auto-seasonal true
+```
+
+如果想手动指定周期，可以把 `--seasonal-period` 设为具体采样周期，并按需调整 `--seasonal-lookback`、`--min-seasonal-samples`。
