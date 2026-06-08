@@ -1,3 +1,4 @@
+import argparse
 import csv
 import re
 from collections import defaultdict
@@ -46,6 +47,17 @@ BASELINES = [
         "class": "org.apache.iotdb.library.anomaly.UDTFOutlier",
     },
 ]
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Evaluate IoTDB anomaly UDF baselines on Yahoo S5.")
+    parser.add_argument(
+        "--tolerance",
+        type=int,
+        default=0,
+        help="Timestamp-index tolerance in sample points.",
+    )
+    return parser.parse_args()
 
 
 def natural_sort_key(value):
@@ -205,12 +217,44 @@ def predicted_timestamps(rows, all_timestamps, mode):
     return row_times
 
 
-def evaluate_predictions(predicted, timestamps, truth):
+def expand_with_tolerance(timestamps, truth, tolerance):
+    if tolerance <= 0:
+        return set(truth)
+
+    index_by_timestamp = {timestamp: index for index, timestamp in enumerate(timestamps)}
+    expanded = set()
+    for timestamp in truth:
+        index = index_by_timestamp.get(timestamp)
+        if index is None:
+            continue
+        left = max(0, index - tolerance)
+        right = min(len(timestamps), index + tolerance + 1)
+        expanded.update(timestamps[left:right])
+    return expanded
+
+
+def count_unmatched_truth(predicted, timestamps, truth, tolerance):
+    timestamp_to_index = {timestamp: index for index, timestamp in enumerate(timestamps)}
+    predicted_indices = {timestamp_to_index[timestamp] for timestamp in predicted if timestamp in timestamp_to_index}
+    unmatched = 0
+    for timestamp in truth:
+        index = timestamp_to_index.get(timestamp)
+        if index is None:
+            unmatched += 1
+            continue
+        if not any((index + offset) in predicted_indices for offset in range(-tolerance, tolerance + 1)):
+            unmatched += 1
+    return unmatched
+
+
+def evaluate_predictions(predicted, timestamps, truth, tolerance):
     valid_timestamps = set(timestamps)
     predicted = {timestamp for timestamp in predicted if timestamp in valid_timestamps}
-    tp = len(predicted & truth)
-    fp = len(predicted - truth)
-    fn = len(truth - predicted)
+    truth_for_matching = expand_with_tolerance(timestamps, truth, tolerance)
+
+    tp = len(predicted & truth_for_matching)
+    fp = len(predicted - truth_for_matching)
+    fn = len(truth - predicted) if tolerance <= 0 else count_unmatched_truth(predicted, timestamps, truth, tolerance)
     precision = tp / (tp + fp) if tp + fp else 0.0
     recall = tp / (tp + fn) if tp + fn else 0.0
     f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
@@ -253,7 +297,7 @@ def print_metrics(prefix, metrics):
     )
 
 
-def evaluate_baseline(session, baseline, yahoo_files):
+def evaluate_baseline(session, baseline, yahoo_files, tolerance):
     metrics = []
     errors = []
     benchmark_metrics = defaultdict(list)
@@ -267,7 +311,7 @@ def evaluate_baseline(session, baseline, yahoo_files):
         try:
             rows = query_records(session, sql)
             predicted = predicted_timestamps(rows, timestamps, baseline["mode"])
-            item_metrics = evaluate_predictions(predicted, timestamps, truth)
+            item_metrics = evaluate_predictions(predicted, timestamps, truth, tolerance)
             metrics.append(item_metrics)
             benchmark_metrics[benchmark_key].append(item_metrics)
         except Exception as exc:
@@ -312,9 +356,11 @@ def ensure_registered(session):
 
 
 def main():
+    args = parse_args()
     yahoo_files = discover_yahoo_files(DATA_DIR)
     print(f"Discovered {len(yahoo_files)} Yahoo S5 csv files.")
     print("Testing IoTDB anomaly UDF baselines with documented default calls.")
+    print(f"tolerance: {args.tolerance}")
     files_by_benchmark = {
         benchmark_key: [
             (file_benchmark_key, csv_path)
@@ -342,7 +388,7 @@ def main():
             session = Session(IOTDB_HOST, IOTDB_PORT, IOTDB_USER, IOTDB_PASSWORD)
             try:
                 session.open(False)
-                overall, errors = evaluate_baseline(session, baseline, benchmark_files)
+                overall, errors = evaluate_baseline(session, baseline, benchmark_files, args.tolerance)
                 results[baseline["name"]] = {"metrics": overall, "errors": errors}
             except Exception as exc:
                 print(f"{baseline['name']} failed before/while evaluating: {exc}")
