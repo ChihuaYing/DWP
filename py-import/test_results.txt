@@ -173,3 +173,37 @@ recall: 0.258855
 f1: 0.276891
 
 python py-import/test_Yahoo_stan_V3.py   --window 150   --threshold 12   --seasonal-period 0   --auto-seasonal true --min-seasonal-samples 5
+
+
+
+python py-import/analyze_Yahoo_V3_period.py --auto-seasonal-min-period 12 --show-series --auto-seasonal-max-period 100 
+
+python py-import/test_Yahoo_stan_V3.py   --window 150   --threshold 12   --seasonal-period 0   --auto-seasonal true --auto-seasonal-max-period 100 
+
+python py-import/test_Yahoo_sr.py --window-size 100 --threshold 3.0 --amp-window-size 5 --score-window-size 50
+
+========== Overall Result On Yahoo S5 ==========
+tested_series: 367
+label_points: 4122
+detected_points: 2540
+TP: 470
+FP: 2070
+FN: 3652
+precision: 0.185039
+recall: 0.114022
+f1: 0.141099
+
+python py-import/test_Yahoo_sr.py --window-size 100 --threshold 4.0 --amp-window-size 5 --score-window-size 50
+
+========== Overall Result On Yahoo S5 ==========
+tested_series: 367
+label_points: 4122
+detected_points: 750
+TP: 186
+FP: 564
+FN: 3936
+precision: 0.248000
+recall: 0.045124
+f1: 0.076355
+
+python py-import/test_Yahoo_sr.py --window-size 100 --threshold 2.0 --amp-window-size 5 --score-window-size 50
