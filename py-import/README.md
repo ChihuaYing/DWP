@@ -417,6 +417,32 @@ python py-import/test_Yahoo_stan_V2.py `
 
 脚本会输出每个 CSV 的点级 `precision / recall / F1`，以及 A1-A4 分组汇总和 Yahoo S5 总体汇总。
 
+### 自动搜索 V2 threshold
+
+`--sweep-threshold` 会在指定 benchmark 上枚举 `threshold`，默认可配合 `--threshold-start 5 --threshold-end 50 --threshold-step 2` 使用。脚本会输出每个 threshold 的 `precision / recall / F1`，自动报告 F1 最高的 threshold，并把三条曲线画到同一张 PNG 中，输出目录：
+
+```text
+py-import/Yahoo_Stan_V2_superpara_graph
+```
+
+分别搜索 A1-A4：
+
+```powershell
+python py-import/test_Yahoo_stan_V2.py --benchmarks A1 --sweep-threshold --window 150 --sensitivity 4.5 --threshold-start 5 --threshold-end 50 --threshold-step 2 --top-k 0
+```
+
+```powershell
+python py-import/test_Yahoo_stan_V2.py --benchmarks A2 --sweep-threshold --window 150 --sensitivity 4.5 --threshold-start 5 --threshold-end 50 --threshold-step 2 --top-k 0
+```
+
+```powershell
+python py-import/test_Yahoo_stan_V2.py --benchmarks A3 --sweep-threshold --window 150 --sensitivity 4.5 --threshold-start 5 --threshold-end 50 --threshold-step 2 --top-k 0
+```
+
+```powershell
+python py-import/test_Yahoo_stan_V2.py --benchmarks A4 --sweep-threshold --window 150 --sensitivity 4.5 --threshold-start 5 --threshold-end 50 --threshold-step 2 --top-k 0
+```
+
 ## Yahoo S5 上测试 STAN_DETECT_NAB_V3
 
 脚本：

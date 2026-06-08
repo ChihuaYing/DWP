@@ -207,3 +207,100 @@ recall: 0.045124
 f1: 0.076355
 
 python py-import/test_Yahoo_sr.py --window-size 100 --threshold 2.0 --amp-window-size 5 --score-window-size 50
+
+python py-import/test_Yahoo_stan_V2.py --benchmarks A1 --sweep-threshold --window 150 --sensitivity 4.5 --threshold-start 5 --threshold-end 90 --threshold-step 2 --top-k 0
+
+========== Best Threshold ==========
+best_threshold: 59
+best_f1: 0.379767
+precision: 0.334858
+recall: 0.438586
+detected_points: 2186
+TP: 732
+FP: 1454
+FN: 937
+
+python py-import/test_Yahoo_stan_V2.py --benchmarks A2 --sweep-threshold --window 150 --sensitivity 4.5 --threshold-start 5 --threshold-end 90 --threshold-step 2 --top-k 0
+
+========== Best Threshold ==========
+best_threshold: 37
+best_f1: 0.589452
+precision: 0.568862
+recall: 0.611588
+detected_points: 501
+TP: 285
+FP: 216
+FN: 181
+
+python py-import/test_Yahoo_stan_V2.py --benchmarks A3 --sweep-threshold --window 150 --sensitivity 4.5 --threshold-start 5 --threshold-end 90 --threshold-step 2 --top-k 0
+
+best_threshold: 21
+best_f1: 0.607754
+precision: 0.657213
+recall: 0.565217
+detected_points: 811
+TP: 533
+FP: 278
+FN: 410
+
+python py-import/test_Yahoo_stan_V2.py --benchmarks A4 --sweep-threshold --window 150 --sensitivity 4.5 --threshold-start 5 --threshold-end 90 --threshold-step 2 --top-k 0
+========== Best Threshold ==========
+best_threshold: 21
+best_f1: 0.269508
+precision: 0.196241
+recall: 0.430077
+detected_points: 2288
+TP: 449
+FP: 1839
+FN: 595
+
+
+python py-import/test_Yahoo_stan_V2.py --benchmarks A1 --sweep-threshold --window 150 --sensitivity 4.5 --threshold-start 5 --threshold-end 120 --threshold-step 1 --top-k 0
+
+========== Best Threshold ==========
+best_threshold: 59
+best_f1: 0.379767
+precision: 0.334858
+recall: 0.438586
+detected_points: 2186
+TP: 732
+FP: 1454
+FN: 937
+
+python py-import/test_Yahoo_stan_V2.py --benchmarks A2 --sweep-threshold --window 150 --sensitivity 4.5 --threshold-start 5 --threshold-end 60 --threshold-step 1 --top-k 0
+
+========== Best Threshold ==========
+best_threshold: 37
+best_f1: 0.589452
+precision: 0.568862
+recall: 0.611588
+detected_points: 501
+TP: 285
+FP: 216
+FN: 181
+
+python py-import/test_Yahoo_stan_V2.py --benchmarks A3 --sweep-threshold --window 150 --sensitivity 4.5 --threshold-start 5 --threshold-end 40 --threshold-step 0.5 --top-k 0
+
+========== Best Threshold ==========
+best_threshold: 22
+best_f1: 0.614443
+precision: 0.726483
+recall: 0.532344
+detected_points: 691
+TP: 502
+FP: 189
+FN: 441
+
+python py-import/test_Yahoo_stan_V2.py --benchmarks A4 --sweep-threshold --window 150 --sensitivity 4.5 --threshold-start 5 --threshold-end 40 --threshold-step 0.5 --top-k 0
+
+========== Best Threshold ==========
+best_threshold: 21
+best_f1: 0.269508
+precision: 0.196241
+recall: 0.430077
+detected_points: 2288
+TP: 449
+FP: 1839
+FN: 595
+
+python py-import/test_Yahoo_stan_V2.py --benchmarks A2 --sweep-threshold --window 150 --sensitivity 4.5 --threshold-start 5 --threshold-end 200 --threshold-step 5 --top-k 0

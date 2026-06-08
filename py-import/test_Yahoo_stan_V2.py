@@ -2,7 +2,14 @@ import argparse
 import csv
 import re
 from collections import defaultdict
+from copy import copy
+from datetime import datetime
 from pathlib import Path
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 from iotdb.Session import Session
 
@@ -14,6 +21,7 @@ IOTDB_PASSWORD = "root"
 DATABASE = "root.yahoo"
 UDF_NAME = "STAN_DETECT_NAB_V2"
 DATA_DIR = Path(__file__).resolve().parent / "dataset" / "Yahoo_S5_Data"
+SWEEP_OUTPUT_DIR = Path(__file__).resolve().parent / "Yahoo_Stan_V2_superpara_graph"
 
 BENCHMARK_DIRS = {
     "A1Benchmark": "a1",
@@ -41,6 +49,15 @@ def parse_args():
     p.add_argument("--top-k", type=int, default=10)
     p.add_argument("--print-sql", action="store_true")
     p.add_argument("--print-files", action="store_true", help="Print one metrics line for every Yahoo csv file.")
+    p.add_argument(
+        "--sweep-threshold",
+        action="store_true",
+        help="Test threshold values from --threshold-start to --threshold-end and plot metrics.",
+    )
+    p.add_argument("--threshold-start", type=float, default=5.0)
+    p.add_argument("--threshold-end", type=float, default=50.0)
+    p.add_argument("--threshold-step", type=float, default=2.0)
+    p.add_argument("--sweep-output-dir", type=Path, default=SWEEP_OUTPUT_DIR)
     return p.parse_args()
 
 
@@ -301,18 +318,122 @@ def print_metrics(prefix, metrics):
     )
 
 
-def run(session, args, yahoo_files):
+def threshold_values(start, end, step):
+    if step <= 0:
+        raise ValueError("--threshold-step must be positive")
+    values = []
+    current = start
+    while current <= end + 1e-9:
+        values.append(round(current, 10))
+        current += step
+    return values
+
+
+def safe_name(text):
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", text)
+
+
+def plot_threshold_sweep(rows, args, best_row):
+    args.sweep_output_dir.mkdir(parents=True, exist_ok=True)
+    thresholds = [row["threshold"] for row in rows]
+
+    fig, axes = plt.subplots(3, 1, figsize=(10.5, 11.0), sharex=True)
+    metrics = [
+        ("f1", "F1-score", "#2f4858"),
+        ("precision", "Precision", "#1b7837"),
+        ("recall", "Recall", "#b2182b"),
+    ]
+
+    for axis, (key, title, color) in zip(axes, metrics):
+        values = [row[key] for row in rows]
+        axis.plot(thresholds, values, marker="o", linewidth=1.4, color=color)
+        axis.axvline(best_row["threshold"], color="#666666", linestyle="--", linewidth=1.0)
+        axis.scatter([best_row["threshold"]], [best_row[key]], color="#000000", s=36, zorder=5)
+        axis.set_ylabel(title)
+        axis.grid(True, color="#dddddd", linewidth=0.7, alpha=0.8)
+        axis.set_ylim(bottom=0.0)
+
+    axes[-1].set_xlabel("threshold")
+    title = (
+        f"STAN V2 Yahoo S5 threshold sweep | benchmarks={args.benchmarks} | "
+        f"window={args.window}"
+    )
+    fig.suptitle(title)
+    fig.tight_layout(rect=(0, 0, 1, 0.97))
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    file_name = (
+        f"stan_v2_threshold_sweep_{safe_name(args.benchmarks)}_"
+        f"w{args.window}_s{args.sensitivity}_{timestamp}.png"
+    )
+    output_path = args.sweep_output_dir / file_name
+    fig.savefig(output_path, dpi=140)
+    plt.close(fig)
+    return output_path
+
+
+def run_threshold_sweep(session, args, yahoo_files):
+    values = threshold_values(args.threshold_start, args.threshold_end, args.threshold_step)
+    print("\n========== STAN V2 Threshold Sweep ==========")
+    print(f"benchmarks: {args.benchmarks}")
+    print(f"thresholds: {values}")
+    print(f"window: {args.window}")
+    print(f"sensitivity: {args.sensitivity}")
+    print(f"series: {len(yahoo_files)}")
+
+    rows = []
+    for threshold in values:
+        sweep_args = copy(args)
+        sweep_args.threshold = threshold
+        sweep_args.print_files = False
+        sweep_args.print_sql = False
+        overall = run(session, sweep_args, yahoo_files, quiet=True)
+        row = {
+            "threshold": threshold,
+            "precision": overall["precision"],
+            "recall": overall["recall"],
+            "f1": overall["f1"],
+            "detected": overall["predicted_count"],
+            "tp": overall["tp"],
+            "fp": overall["fp"],
+            "fn": overall["fn"],
+        }
+        rows.append(row)
+        print(
+            f"threshold={threshold:g}, F1={row['f1']:.6f}, "
+            f"P={row['precision']:.6f}, R={row['recall']:.6f}, "
+            f"detected={row['detected']}, TP={row['tp']}, FP={row['fp']}, FN={row['fn']}"
+        )
+
+    best_row = max(rows, key=lambda row: (row["f1"], row["precision"], row["recall"]))
+    output_path = plot_threshold_sweep(rows, args, best_row)
+
+    print("\n========== Best Threshold ==========")
+    print(f"best_threshold: {best_row['threshold']:g}")
+    print(f"best_f1: {best_row['f1']:.6f}")
+    print(f"precision: {best_row['precision']:.6f}")
+    print(f"recall: {best_row['recall']:.6f}")
+    print(f"detected_points: {best_row['detected']}")
+    print(f"TP: {best_row['tp']}")
+    print(f"FP: {best_row['fp']}")
+    print(f"FN: {best_row['fn']}")
+    print(f"plot: {output_path}")
+    return best_row
+
+
+def run(session, args, yahoo_files, quiet=False):
     results = []
     benchmark_metrics = defaultdict(list)
 
-    print("\n========== Evaluation Config ==========")
-    print(
-        f"database: {args.database}\nudf: {args.udf}\nwindow: {args.window}\n"
-        f"sensitivity: {args.sensitivity}\nthreshold: {args.threshold}\ntolerance: {args.tolerance}"
-    )
-    print("\n========== Per Yahoo S5 File Result ==========")
-    if not args.print_files:
-        print("Per-file output is disabled. Use --print-files to show every csv file.")
+    if not quiet:
+        print("\n========== Evaluation Config ==========")
+        print(
+            f"database: {args.database}\nudf: {args.udf}\nwindow: {args.window}\n"
+            f"sensitivity: {args.sensitivity}\nthreshold: {args.threshold}\ntolerance: {args.tolerance}"
+        )
+        print("\n========== Per Yahoo S5 File Result ==========")
+        if not args.print_files:
+            print("Per-file output is disabled. Use --print-files to show every csv file.")
 
     for benchmark_key, csv_path in yahoo_files:
         device = device_for_csv(args.database, benchmark_key, csv_path)
@@ -320,39 +441,41 @@ def run(session, args, yahoo_files):
         timestamps, truth = read_yahoo_labels(csv_path, benchmark_key)
         sql = build_sql(args, device)
 
-        if args.print_sql:
+        if args.print_sql and not quiet:
             print(sql)
 
         predicted = set(query_predictions(session, sql))
         metrics = evaluate_predictions(predicted, timestamps, truth, args.tolerance)
         results.append((benchmark_key, relative_name, metrics))
         benchmark_metrics[benchmark_key].append(metrics)
-        if args.print_files:
+        if args.print_files and not quiet:
             print_metrics(f"{benchmark_key.upper()} {relative_name}", metrics)
 
-    print("\n========== Result By Benchmark ==========")
-    for benchmark_key in sorted(benchmark_metrics):
-        print_metrics(benchmark_key.upper(), add_metrics(benchmark_metrics[benchmark_key]))
+    if not quiet:
+        print("\n========== Result By Benchmark ==========")
+        for benchmark_key in sorted(benchmark_metrics):
+            print_metrics(benchmark_key.upper(), add_metrics(benchmark_metrics[benchmark_key]))
 
     overall = add_metrics([item[2] for item in results])
-    print("\n========== Overall Result On Yahoo S5 ==========")
-    print(f"tested_series: {len(results)}")
-    print(f"label_points: {overall['label_count']}")
-    print(f"detected_points: {overall['predicted_count']}")
-    print(f"TP: {overall['tp']}")
-    print(f"FP: {overall['fp']}")
-    print(f"FN: {overall['fn']}")
-    print(f"precision: {overall['precision']:.6f}")
-    print(f"recall: {overall['recall']:.6f}")
-    print(f"f1: {overall['f1']:.6f}")
+    if not quiet:
+        print("\n========== Overall Result On Yahoo S5 ==========")
+        print(f"tested_series: {len(results)}")
+        print(f"label_points: {overall['label_count']}")
+        print(f"detected_points: {overall['predicted_count']}")
+        print(f"TP: {overall['tp']}")
+        print(f"FP: {overall['fp']}")
+        print(f"FN: {overall['fn']}")
+        print(f"precision: {overall['precision']:.6f}")
+        print(f"recall: {overall['recall']:.6f}")
+        print(f"f1: {overall['f1']:.6f}")
 
-    print(f"\n========== Top {min(args.top_k, len(results))} Yahoo S5 Files By F1 ==========")
-    for benchmark_key, relative_name, metrics in sorted(
-        results,
-        key=lambda item: (item[2]["f1"], item[2]["recall"], item[2]["precision"]),
-        reverse=True,
-    )[: args.top_k]:
-        print_metrics(f"{benchmark_key.upper()} {relative_name}", metrics)
+        print(f"\n========== Top {min(args.top_k, len(results))} Yahoo S5 Files By F1 ==========")
+        for benchmark_key, relative_name, metrics in sorted(
+            results,
+            key=lambda item: (item[2]["f1"], item[2]["recall"], item[2]["precision"]),
+            reverse=True,
+        )[: args.top_k]:
+            print_metrics(f"{benchmark_key.upper()} {relative_name}", metrics)
 
     return overall
 
@@ -367,7 +490,10 @@ def main():
     print("Connected to IoTDB.")
 
     try:
-        run(session, args, yahoo_files)
+        if args.sweep_threshold:
+            run_threshold_sweep(session, args, yahoo_files)
+        else:
+            run(session, args, yahoo_files)
     finally:
         session.close()
         print("Session closed.")
