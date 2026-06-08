@@ -34,20 +34,6 @@ BASELINES = [
         "class": "org.apache.iotdb.library.anomaly.UDTFKSigma",
     },
     {
-        "name": "MISSDETECT",
-        "sql": "MISSDETECT(value)",
-        "mode": "boolean",
-        "class": "org.apache.iotdb.library.anomaly.UDTFMissDetect",
-    },
-    # RANGE and OUTLIER have no documented default for their required bounds/window parameters.
-    # They are kept here so the baseline run reports their status explicitly.
-    {
-        "name": "RANGE",
-        "sql": "RANGE(value)",
-        "mode": "sparse",
-        "class": "org.apache.iotdb.library.anomaly.UDTFRange",
-    },
-    {
         "name": "TWOSIDEDFILTER",
         "sql": "TWOSIDEDFILTER(value)",
         "mode": "filtered",
@@ -329,8 +315,15 @@ def main():
     yahoo_files = discover_yahoo_files(DATA_DIR)
     print(f"Discovered {len(yahoo_files)} Yahoo S5 csv files.")
     print("Testing IoTDB anomaly UDF baselines with documented default calls.")
+    files_by_benchmark = {
+        benchmark_key: [
+            (file_benchmark_key, csv_path)
+            for file_benchmark_key, csv_path in yahoo_files
+            if file_benchmark_key == benchmark_key
+        ]
+        for benchmark_key in BENCHMARK_DIRS.values()
+    }
 
-    results = {}
     session = Session(IOTDB_HOST, IOTDB_PORT, IOTDB_USER, IOTDB_PASSWORD)
     try:
         session.open(False)
@@ -339,30 +332,36 @@ def main():
     finally:
         close_session(session)
 
-    for baseline in BASELINES:
-        session = Session(IOTDB_HOST, IOTDB_PORT, IOTDB_USER, IOTDB_PASSWORD)
-        try:
-            session.open(False)
-            overall, errors = evaluate_baseline(session, baseline, yahoo_files)
-            results[baseline["name"]] = {"metrics": overall, "errors": errors}
-        except Exception as exc:
-            print(f"{baseline['name']} failed before/while evaluating: {exc}")
-            results[baseline["name"]] = {"metrics": None, "errors": [("__baseline__", str(exc))]}
-        finally:
-            close_session(session)
+    for benchmark_key in BENCHMARK_DIRS.values():
+        benchmark_files = files_by_benchmark[benchmark_key]
+        print(f"\n========== {benchmark_key.upper()} Baseline Evaluation ==========")
+        print(f"Testing {len(benchmark_files)} Yahoo S5 {benchmark_key.upper()} csv files.")
 
-    print("\n========== Baseline F1 Summary ==========")
-    for baseline in BASELINES:
-        name = baseline["name"]
-        metrics = results[name]["metrics"]
-        errors = results[name]["errors"]
-        if metrics is None:
-            print(f"{name}: F1=N/A, errors={len(errors)}")
-        else:
-            print(
-                f"{name}: F1={metrics['f1']:.6f}, P={metrics['precision']:.6f}, "
-                f"R={metrics['recall']:.6f}, detected={metrics['predicted_count']}, errors={len(errors)}"
-            )
+        results = {}
+        for baseline in BASELINES:
+            session = Session(IOTDB_HOST, IOTDB_PORT, IOTDB_USER, IOTDB_PASSWORD)
+            try:
+                session.open(False)
+                overall, errors = evaluate_baseline(session, baseline, benchmark_files)
+                results[baseline["name"]] = {"metrics": overall, "errors": errors}
+            except Exception as exc:
+                print(f"{baseline['name']} failed before/while evaluating: {exc}")
+                results[baseline["name"]] = {"metrics": None, "errors": [("__baseline__", str(exc))]}
+            finally:
+                close_session(session)
+
+        print(f"\n========== {benchmark_key.upper()} Baseline F1 Summary ==========")
+        for baseline in BASELINES:
+            name = baseline["name"]
+            metrics = results[name]["metrics"]
+            errors = results[name]["errors"]
+            if metrics is None:
+                print(f"{name}: F1=N/A, errors={len(errors)}")
+            else:
+                print(
+                    f"{name}: F1={metrics['f1']:.6f}, P={metrics['precision']:.6f}, "
+                    f"R={metrics['recall']:.6f}, detected={metrics['predicted_count']}, errors={len(errors)}"
+                )
 
 
 if __name__ == "__main__":
