@@ -67,7 +67,7 @@ python experiments/test_Yahoo_baseline.py
 - `sensitivity`：灵敏度控制；
 - `minThreshold`：最小阈值下界。
 
-建议调参顺序：
+调参顺序：
 
 1. 先固定 `window`，观察整体报警密度；
 2. 再调 `sensitivity`，控制误报与漏报平衡；
