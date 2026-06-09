@@ -18,7 +18,7 @@ IOTDB_USER = "root"
 IOTDB_PASSWORD = "root"
 
 DATABASE = "root.yahoo"
-DATA_DIR = Path(__file__).resolve().parent / "dataset" / "Yahoo_S5_Data"
+DATA_DIR = Path(__file__).resolve().parents[1] / "dataset" / "Yahoo_S5_Data"
 
 BATCH_SIZE = 1000
 

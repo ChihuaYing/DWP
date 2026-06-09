@@ -13,8 +13,7 @@ IOTDB_USER = "root"
 IOTDB_PASSWORD = "root"
 
 DATABASE = "root.yahoo"
-BASE_DIR = Path(__file__).resolve().parents[1]
-DATA_DIR = BASE_DIR / "py-import" / "dataset" / "Yahoo_S5_Data"
+DATA_DIR = Path(__file__).resolve().parents[1] / "dataset" / "Yahoo_S5_Data"
 
 BENCHMARK_DIRS = {
     # "A1Benchmark": "a1",

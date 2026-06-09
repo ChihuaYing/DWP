@@ -11,8 +11,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
-BASE_DIR = Path(__file__).resolve().parents[1]
-DATA_DIR = BASE_DIR / "py-import" / "dataset" / "Yahoo_S5_Data"
+DATA_DIR = Path(__file__).resolve().parents[1] / "dataset" / "Yahoo_S5_Data"
 OUTPUT_DIR = Path(__file__).resolve().parent / "Yahoo_S5-pics"
 
 BENCHMARK_DIRS = {

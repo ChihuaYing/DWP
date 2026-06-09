@@ -10,14 +10,14 @@ buildNumber.properties
 .mvn/timing.properties
 .mvn/wrapper/maven-wrapper.jar
 
-py-import/dataset/*
+
 !py-import/dataset/.gitkeep
 py-import/test_results/*
 !py-import/test_results/.gitkeep
 py-import/STANNABV2-pics/
 py-import/STANNABV3-pics/
 py-import/Yahoo_S5-pics/
-
+dataset/*
 # IDE
 .idea/
 *.iml
