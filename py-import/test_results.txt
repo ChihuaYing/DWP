@@ -303,4 +303,103 @@ TP: 449
 FP: 1839
 FN: 595
 
-python py-import/test_Yahoo_stan_V2.py --benchmarks A2 --sweep-threshold --window 150 --sensitivity 4.5 --threshold-start 5 --threshold-end 200 --threshold-step 5 --top-k 0
+python py-import/test_Yahoo_stan_V1.py --grid-search --benchmarks A1 --window-start 150 --window-end 250 --window-step 50 --min-threshold-start 1 --min-threshold-end 10 --min-threshold-step 3 --sensitivity-start 1.5 --sensitivity-end 20 --sensitivity-step 3 --tolerance 3 --top-k 0
+
+A1 best_window: 250
+A1 best_min_threshold: 4
+A1 best_sensitivity: 1.5
+A1 best_f1: 0.338867
+A1 precision: 0.673786
+A1 recall: 0.226354
+A1 csv: E:\Develop\School\Grad1\2-Spring\Courses\DataWarehouse\hw\DWP\py-import\Yahoo_Stan_V1_superpara_graph\stan_v1_grid_search_A1_tol3_20260609_022208.csv
+Session closed.
+
+python py-import/test_Yahoo_stan_V1.py --grid-search --benchmarks A1 --window-start 200 --window-end 300 --window-step 25 --min-threshold-start 1 --min-threshold-end 8 --min-threshold-step 1 --sensitivity-start 1.1 --sensitivity-end 5 --sensitivity-step 0.5 --tolerance 3 --top-k 0
+
+A1 best_window: 300
+A1 best_min_threshold: 3
+A1 best_sensitivity: 2.1
+A1 best_f1: 0.436278
+A1 precision: 0.549754
+A1 recall: 0.361633
+
+python py-import/test_Yahoo_stan_V1.py --grid-search --benchmarks A1 --window-start 300 --window-end 400 --window-step 25 --min-threshold-start 1 --min-threshold-end 5 --min-threshold-step 0.5 --sensitivity-start 1.01 --sensitivity-end 3 --sensitivity-step 0.2 --tolerance 3 --top-k 0
+
+A1 best_window: 400
+A1 best_min_threshold: 3
+A1 best_sensitivity: 2.01
+A1 best_f1: 0.445865
+A1 precision: 0.577042
+A1 recall: 0.363281
+
+python py-import/test_Yahoo_stan_V1.py --grid-search --benchmarks A2 --window-start 300 --window-end 400 --window-step 25 --min-threshold-start 1 --min-threshold-end 10 --min-threshold-step 3 --sensitivity-start 1.01 --sensitivity-end 15.5 --sensitivity-step 2 --tolerance 3 --top-k 0
+
+A2 best_window: 350
+A2 best_min_threshold: 1
+A2 best_sensitivity: 5.01
+A2 best_f1: 0.823684
+A2 precision: 1.000000
+A2 recall: 0.700224
+
+python py-import/test_Yahoo_stan_V1.py --grid-search --benchmarks A2 --window-start 300 --window-end 400 --window-step 25 --min-threshold-start 2 --min-threshold-end 7 --min-threshold-step 1 --sensitivity-start 3.01 --sensitivity-end 10.5 --sensitivity-step 0.5 --tolerance 3 --top-k 0
+
+A2 best_window: 350
+A2 best_min_threshold: 2
+A2 best_sensitivity: 3.01
+A2 best_f1: 0.885135
+A2 precision: 0.944712
+A2 recall: 0.832627
+
+python py-import/test_Yahoo_stan_V1.py --grid-search --benchmarks A2 --window-start 300 --window-end 400 --window-step 25 --min-threshold-start 1 --min-threshold-end 4 --min-threshold-step 0.5 --sensitivity-start 1.01 --sensitivity-end 6.5 --sensitivity-step 0.3 --tolerance 3 --top-k 0
+
+A2 best_window: 375
+A2 best_min_threshold: 2.5
+A2 best_sensitivity: 2.51
+A2 best_f1: 0.886747
+A2 precision: 0.973545
+A2 recall: 0.814159
+
+python py-import/test_Yahoo_stan_V1.py --grid-search --benchmarks A3 --window-start 300 --window-end 400 --window-step 25 --min-threshold-start 1 --min-threshold-end 10 --min-threshold-step 3 --sensitivity-start 1.01 --sensitivity-end 15.5 --sensitivity-step 2 --tolerance 3 --top-k 0
+
+A3 best_window: 300
+A3 best_min_threshold: 1
+A3 best_sensitivity: 3.01
+A3 best_f1: 0.531106
+A3 precision: 0.598701
+A3 recall: 0.477226
+
+python py-import/test_Yahoo_stan_V1.py --grid-search --benchmarks A3 --window-start 200 --window-end 400 --window-step 25 --min-threshold-start 0.5 --min-threshold-end 5 --min-threshold-step 1 --sensitivity-start 1.01 --sensitivity-end 5.01 --sensitivity-step 0.5 --tolerance 3 --top-k 0
+
+A3 best_window: 200
+A3 best_min_threshold: 1.5
+A3 best_sensitivity: 3.01
+A3 best_f1: 0.646818
+A3 precision: 0.734748
+A3 recall: 0.577685
+
+python py-import/test_Yahoo_stan_V1.py --grid-search --benchmarks A3 --window-start 200 --window-end 250 --window-step 25 --min-threshold-start 0.5 --min-threshold-end 2.1 --min-threshold-step 0.1 --sensitivity-start 2.01 --sensitivity-end 4.01 --sensitivity-step 0.5 --tolerance 3 --top-k 0
+
+A3 best_window: 200
+A3 best_min_threshold: 2
+A3 best_sensitivity: 3.01
+A3 best_f1: 0.678431
+A3 precision: 0.888699
+A3 recall: 0.548626
+
+python py-import/test_Yahoo_stan_V1.py --grid-search --benchmarks A4 --window-start 300 --window-end 400 --window-step 25 --min-threshold-start 1 --min-threshold-end 10 --min-threshold-step 3 --sensitivity-start 1.01 --sensitivity-end 15.5 --sensitivity-step 2 --tolerance 3 --top-k 0
+
+A4 best_window: 300
+A4 best_min_threshold: 1
+A4 best_sensitivity: 3.01
+A4 best_f1: 0.400754
+A4 precision: 0.402844
+A4 recall: 0.398687
+
+python py-import/test_Yahoo_stan_V1.py --grid-search --benchmarks A4 --window-start 200 --window-end 300 --window-step 25 --min-threshold-start 0.3 --min-threshold-end 2 --min-threshold-step 0.2 --sensitivity-start 2.01 --sensitivity-end 3.5 --sensitivity-step 0.5 --tolerance 3 --top-k 0
+
+A4 best_window: 200
+A4 best_min_threshold: 1.9
+A4 best_sensitivity: 3.01
+A4 best_f1: 0.493658
+A4 precision: 0.560624
+A4 recall: 0.440982

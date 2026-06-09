@@ -54,6 +54,17 @@ def parse_args():
         action="store_true",
         help="Test sensitivity values from --sensitivity-start to --sensitivity-end and plot metrics.",
     )
+    p.add_argument(
+        "--grid-search",
+        action="store_true",
+        help="Grid search window, min-threshold, and sensitivity for each selected benchmark.",
+    )
+    p.add_argument("--window-start", type=int, default=100)
+    p.add_argument("--window-end", type=int, default=100)
+    p.add_argument("--window-step", type=int, default=50)
+    p.add_argument("--min-threshold-start", type=float, default=3.0)
+    p.add_argument("--min-threshold-end", type=float, default=3.0)
+    p.add_argument("--min-threshold-step", type=float, default=1.0)
     p.add_argument("--sensitivity-start", type=float, default=1.5)
     p.add_argument("--sensitivity-end", type=float, default=8.0)
     p.add_argument("--sensitivity-step", type=float, default=0.25)
@@ -329,6 +340,28 @@ def sensitivity_values(start, end, step):
     return values
 
 
+def int_values(start, end, step, name):
+    if step <= 0:
+        raise ValueError(f"--{name}-step must be positive")
+    if start > end:
+        raise ValueError(f"--{name}-start must be less than or equal to --{name}-end")
+    return list(range(start, end + 1, step))
+
+
+def float_values(start, end, step, name):
+    if step <= 0:
+        raise ValueError(f"--{name}-step must be positive")
+    if start > end:
+        raise ValueError(f"--{name}-start must be less than or equal to --{name}-end")
+
+    values = []
+    current = start
+    while current <= end + 1e-9:
+        values.append(round(current, 10))
+        current += step
+    return values
+
+
 def safe_name(text):
     return re.sub(r"[^A-Za-z0-9._-]+", "_", text)
 
@@ -418,6 +451,116 @@ def run_sensitivity_sweep(session, args, yahoo_files):
     return best_row
 
 
+def write_grid_rows(output_path, rows):
+    fieldnames = [
+        "benchmark",
+        "window",
+        "min_threshold",
+        "sensitivity",
+        "precision",
+        "recall",
+        "f1",
+        "detected",
+        "tp",
+        "fp",
+        "fn",
+        "label_count",
+        "series_count",
+        "tolerance",
+    ]
+    with output_path.open("w", encoding="utf-8", newline="") as fp:
+        writer = csv.DictWriter(fp, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def run_grid_search(session, args, yahoo_files):
+    windows = int_values(args.window_start, args.window_end, args.window_step, "window")
+    min_thresholds = float_values(
+        args.min_threshold_start,
+        args.min_threshold_end,
+        args.min_threshold_step,
+        "min-threshold",
+    )
+    sensitivities = float_values(args.sensitivity_start, args.sensitivity_end, args.sensitivity_step, "sensitivity")
+    grid_size = len(windows) * len(min_thresholds) * len(sensitivities)
+
+    files_by_benchmark = defaultdict(list)
+    for benchmark_key, csv_path in yahoo_files:
+        files_by_benchmark[benchmark_key].append((benchmark_key, csv_path))
+
+    args.sweep_output_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    print("\n========== STAN V1 Grid Search ==========")
+    print(f"benchmarks: {args.benchmarks}")
+    print(f"windows: {windows}")
+    print(f"min_thresholds: {min_thresholds}")
+    print(f"sensitivities: {sensitivities}")
+    print(f"tolerance: {args.tolerance}")
+    print(f"grid_size_per_benchmark: {grid_size}")
+
+    best_rows = []
+    for benchmark_key in BENCHMARK_DIRS.values():
+        benchmark_files = files_by_benchmark.get(benchmark_key, [])
+        if not benchmark_files:
+            continue
+
+        print(f"\n========== Grid Search {benchmark_key.upper()} ==========")
+        print(f"series: {len(benchmark_files)}")
+        rows = []
+        for window in windows:
+            for min_threshold in min_thresholds:
+                for sensitivity in sensitivities:
+                    grid_args = copy(args)
+                    grid_args.window = window
+                    grid_args.min_threshold = min_threshold
+                    grid_args.sensitivity = sensitivity
+                    grid_args.print_files = False
+                    grid_args.print_sql = False
+                    overall = run(session, grid_args, benchmark_files, quiet=True)
+                    row = {
+                        "benchmark": benchmark_key.upper(),
+                        "window": window,
+                        "min_threshold": min_threshold,
+                        "sensitivity": sensitivity,
+                        "precision": overall["precision"],
+                        "recall": overall["recall"],
+                        "f1": overall["f1"],
+                        "detected": overall["predicted_count"],
+                        "tp": overall["tp"],
+                        "fp": overall["fp"],
+                        "fn": overall["fn"],
+                        "label_count": overall["label_count"],
+                        "series_count": len(benchmark_files),
+                        "tolerance": args.tolerance,
+                    }
+                    rows.append(row)
+                    print(
+                        f"{benchmark_key.upper()} window={window}, min_threshold={min_threshold:g}, "
+                        f"sensitivity={sensitivity:g}, F1={row['f1']:.6f}, "
+                        f"P={row['precision']:.6f}, R={row['recall']:.6f}"
+                    )
+
+        best_row = max(rows, key=lambda row: (row["f1"], row["precision"], row["recall"]))
+        best_rows.append(best_row)
+        output_path = args.sweep_output_dir / (
+            f"stan_v1_grid_search_{benchmark_key.upper()}_"
+            f"tol{args.tolerance}_{timestamp}.csv"
+        )
+        write_grid_rows(output_path, rows)
+
+        print(f"\n{benchmark_key.upper()} best_window: {best_row['window']}")
+        print(f"{benchmark_key.upper()} best_min_threshold: {best_row['min_threshold']:g}")
+        print(f"{benchmark_key.upper()} best_sensitivity: {best_row['sensitivity']:g}")
+        print(f"{benchmark_key.upper()} best_f1: {best_row['f1']:.6f}")
+        print(f"{benchmark_key.upper()} precision: {best_row['precision']:.6f}")
+        print(f"{benchmark_key.upper()} recall: {best_row['recall']:.6f}")
+        print(f"{benchmark_key.upper()} csv: {output_path}")
+
+    return best_rows
+
+
 def run(session, args, yahoo_files, quiet=False):
     results = []
     benchmark_metrics = defaultdict(list)
@@ -487,7 +630,9 @@ def main():
     print("Connected to IoTDB.")
 
     try:
-        if args.sweep_sensitivity:
+        if args.grid_search:
+            run_grid_search(session, args, yahoo_files)
+        elif args.sweep_sensitivity:
             run_sensitivity_sweep(session, args, yahoo_files)
         else:
             run(session, args, yahoo_files)
