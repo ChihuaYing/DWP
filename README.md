@@ -9,6 +9,7 @@
   - `README.md`：算法说明、注册和使用方式、参数说明、注意事项。
 - `experiments/`
   - `test_Yahoo_baseline.py`：Yahoo S5 内置基线算法评估脚本。
+  - `test_Yahoo_DDAD.py` Yahoo S5 DDAD 方法测评
   - `plot_Yahoo_results.py`：Yahoo S5 数据与结果可视化脚本，用于画出实验图。
   - `experiments_README.md`：Yahoo S5 实验说明、调参逻辑、对比结论与图表说明。
 - `py-import/`

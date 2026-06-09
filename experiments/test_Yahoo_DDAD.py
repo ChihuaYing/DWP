@@ -19,9 +19,9 @@ IOTDB_USER = "root"
 IOTDB_PASSWORD = "root"
 
 DATABASE = "root.yahoo"
-UDF_NAME = "STAN_DETECT"
+UDF_NAME = "DDAD"
 DATA_DIR = Path(__file__).resolve().parents[1] / "dataset" / "Yahoo_S5_Data"
-SWEEP_OUTPUT_DIR = Path(__file__).resolve().parent / "Yahoo_Stan_V1_superpara_graph"
+SWEEP_OUTPUT_DIR = Path(__file__).resolve().parent / "Yahoo_DDAD_superpara_graph"
 
 BENCHMARK_DIRS = {
     "A1Benchmark": "a1",
@@ -32,7 +32,7 @@ BENCHMARK_DIRS = {
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Evaluate STAN_DETECT on Yahoo S5 in IoTDB.")
+    p = argparse.ArgumentParser(description="Evaluate DDAD on Yahoo S5 in IoTDB.")
     p.add_argument("--host", default=IOTDB_HOST)
     p.add_argument("--port", type=int, default=IOTDB_PORT)
     p.add_argument("--user", default=IOTDB_USER)
@@ -387,13 +387,13 @@ def plot_sensitivity_sweep(rows, args, best_row):
         axis.set_ylim(bottom=0.0)
 
     axes[-1].set_xlabel("sensitivity")
-    title = f"STAN V1 Yahoo S5 sensitivity sweep | benchmarks={args.benchmarks} | window={args.window}"
+    title = f"DDAD Yahoo S5 sensitivity sweep | benchmarks={args.benchmarks} | window={args.window}"
     fig.suptitle(title)
     fig.tight_layout(rect=(0, 0, 1, 0.97))
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     file_name = (
-        f"stan_v1_sensitivity_sweep_{safe_name(args.benchmarks)}_"
+        f"ddad_sensitivity_sweep_{safe_name(args.benchmarks)}_"
         f"w{args.window}_m{args.min_threshold}_{timestamp}.png"
     )
     output_path = args.sweep_output_dir / file_name
@@ -404,7 +404,7 @@ def plot_sensitivity_sweep(rows, args, best_row):
 
 def run_sensitivity_sweep(session, args, yahoo_files):
     values = sensitivity_values(args.sensitivity_start, args.sensitivity_end, args.sensitivity_step)
-    print("\n========== STAN V1 Sensitivity Sweep ==========")
+    print("\n========== DDAD Sensitivity Sweep ==========")
     print(f"benchmarks: {args.benchmarks}")
     print(f"sensitivities: {values}")
     print(f"window: {args.window}")
@@ -492,7 +492,7 @@ def run_grid_search(session, args, yahoo_files):
     args.sweep_output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    print("\n========== STAN V1 Grid Search ==========")
+    print("\n========== DDAD Grid Search ==========")
     print(f"benchmarks: {args.benchmarks}")
     print(f"windows: {windows}")
     print(f"min_thresholds: {min_thresholds}")
@@ -545,7 +545,7 @@ def run_grid_search(session, args, yahoo_files):
         best_row = max(rows, key=lambda row: (row["f1"], row["precision"], row["recall"]))
         best_rows.append(best_row)
         output_path = args.sweep_output_dir / (
-            f"stan_v1_grid_search_{benchmark_key.upper()}_"
+            f"ddad_grid_search_{benchmark_key.upper()}_"
             f"tol{args.tolerance}_{timestamp}.csv"
         )
         write_grid_rows(output_path, rows)
