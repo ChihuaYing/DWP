@@ -11,7 +11,7 @@ import org.apache.iotdb.udf.api.type.Type;
 
 import java.io.IOException;
 
-public class StanUDTF implements UDTF {
+public class AdaptiveRobustRollingAnomalyUDTF implements UDTF {
 
   private static final double EPS = 1e-12;
   private static final double EMA_ALPHA = 0.05;

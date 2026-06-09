@@ -1,36 +1,25 @@
-曾辉这边的结论：
-1. 试错之后，比较推荐选定数据集 NAB + Yahoo，
-2. baseline 可以选 LOF + TwoSlidedFilter，这个还需要测试。
-3. 针对 NAB 数据集，异常点的数据非常少，可能一个系列才几个异常点。需要测试点级别的准确率 label 使用 NAB-master/label/combined_labels.json，不要用 NAB-master/label/combined_window.json逐个窗口测试准确率。准确率会非常低。
-4. 部分参数需要调整。先小规模测试一下效果，对比一下 baseline。不需要在整个数据集上都超过baseline 。先得把任务完成。
-5. StanUDTFNABV2 是针对 NAB 的一个简单优化，但是效果可能也不是很好。
-6. test_NAB_stan_detect 是测试算法在 NAB 数据集上效果的脚本，主要逻辑是写好 SQL, 连接 IoTDB 批量执行。
+# DWP 项目说明
 
-**wyx的说明：**
+本仓库围绕 IoTDB 时间序列异常检测 UDF、Yahoo S5 实验与文档整理展开。仓库中的说明、实验脚本与算法命名均以 Yahoo S5 为主，不再保留 NAB 相关运行流程。
 
-测试前要在iotdb cli中执行：
+## 1. 仓库文件说明
 
-```SQL
-CREATE FUNCTION STAN_DETECT_NAB_V2 AS 'org.apache.iotdb.udf.StanUDTFNABV2'
-```
+- `iotdb-udf/`
+  - `src/main/java/org/apache/iotdb/udf/AdaptiveRobustRollingAnomalyUDTF.java`：当前主算法实现。
+  - `README.md`：算法说明、注册和使用方式、参数说明、注意事项。
+- `experiments/`
+  - `test_Yahoo_baseline.py`：Yahoo S5 内置基线算法评估脚本。
+  - `plot_Yahoo_results.py`：Yahoo S5 数据与结果可视化脚本，用于画出实验图。
+  - `experiments_README.md`：Yahoo S5 实验说明、调参逻辑、对比结论与图表说明。
+- `py-import/`
+  - `import_Yahoo_S5_All.py`：Yahoo S5 数据导入脚本。
+  - 其他 Yahoo 相关测试脚本与数据处理脚本。
 
-如果直接在/py-import/dataset/文件夹中执行`git clone git@github.com:numenta/NAB.git`，实际上数据的位置会位于：
+## 2. 算法注册与运行
 
-```
-/py-import/dataset/NAB/data
-/py-import/dataset/NAB/labels
-```
+算法注册、运行与调参说明已经迁移到 `iotdb-udf/README.md`。建议先阅读该文档，再按照其中的 SQL 示例和参数说明完成函数注册、查询与实验复现。
 
-此时导入数据和进行测试的命令是：
+---
 
-```bash
-# 在执行之前要启动iotdb服务端，并执行CREATE FUNCTION STAN_DETECT_NAB_V2 AS 'org.apache.iotdb.udf.StanUDTFNABV2'
-# 执行位置位于DWP项目根目录
-
-# 导入数据：
-python py-import/import_NAB.py --data-dir py-import/dataset/NAB/data --label-path py-import/dataset/NAB/labels/combined_windows.json --force-recreate
-
-# 测试：
-python py-import/test_NAB_stan_detect.py   --data-dir py-import/dataset/NAB/data   --label-path py-import/dataset/NAB/labels/combined_labels.json
-```
+如需进一步开展实验，请直接使用 Yahoo S5 流程。
 
