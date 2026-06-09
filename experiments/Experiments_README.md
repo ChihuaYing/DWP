@@ -1,10 +1,10 @@
 # Yahoo S5 实验说明
 
-本文档只记录最终采用的 `Adaptive Robust Rolling Anomaly Detection`（简称 `ARRAD`）在 Yahoo S5 数据集上的实验设置、调参逻辑、对比基线与图表绘制方式。
+本文档重点说明 `Dual Deviation Anomaly Detection`（简称 `DDAD`）在 Yahoo S5 数据集上的实验设置、调参逻辑、对比基线与图表绘制方式。
 
 ## 1. 实验目标
 
-- 验证 `Adaptive Robust Rolling Anomaly Detection`（简称 `ARRAD`）在 Yahoo S5 上的检测效果；
+- 验证 `Dual Deviation Anomaly Detection`（简称 `DDAD`）在 Yahoo S5 上的检测效果；
 - 与 IoTDB 内置算法做点级别对比；
 - 记录不同参数下的 F1、Precision、Recall 变化；
 - 输出实验图，便于在报告或论文中展示。
@@ -40,7 +40,7 @@ Yahoo S5 数据按四类基准集组织：
 在 IoTDB CLI 中注册算法：
 
 ```sql
-CREATE FUNCTION ARRAD AS 'org.apache.iotdb.udf.AdaptiveRobustRollingAnomalyUDTF';
+CREATE FUNCTION DDAD AS 'org.apache.iotdb.udf.DualDeviationAnomalyDetectionUDTF';
 ```
 
 ### 4.3 运行基线评估
@@ -77,7 +77,7 @@ python experiments/test_Yahoo_baseline.py
 
 ### 5.1 原始数据可视化
 
-`experiments/plot_Yahoo_results.py` 用于绘制 Yahoo S5 原始序列及标签点；如果图中需要标注算法结果，应统一使用 `ARRAD` 作为算法名。脚本会遍历每个 benchmark 的 CSV，生成单图并输出 `plot_manifest.json`。
+`experiments/plot_Yahoo_results.py` 用于绘制 Yahoo S5 原始序列及标签点；如果图中需要标注算法结果，应统一使用 `DDAD` 作为算法名。脚本会遍历每个 benchmark 的 CSV，生成单图并输出 `plot_manifest.json`。
 
 运行方式：
 
@@ -90,18 +90,4 @@ python experiments/plot_Yahoo_results.py
 ```text
 experiments/Yahoo_S5-pics/
 ```
-
-### 5.2 结果图更新要求
-
-如果算法命名调整为 `ARRAD`，图表标题、图例、实验说明中的算法名称也应同步替换。重新绘图后，建议在 `experiments/Yahoo_S5-pics/` 下保留最新一版图，并在实验报告中引用。
-
-## 6. 分析结论写法建议
-
-实验报告建议按以下结构书写：
-
-1. Yahoo S5 数据集与 benchmark 说明；
-2. 基线方法对比；
-3. `ARRAD` 参数调优过程；
-4. 不同 benchmark 下的指标对比；
-5. 实验图展示与结论总结。
 
