@@ -107,6 +107,4 @@ DROP FUNCTION DDAD;
 ## 5. 项目中的相关文件
 
 - `src/main/java/org/apache/iotdb/udf/DualDeviationAnomalyDetectionUDTF.java`：主算法实现
-- `src/main/java/org/apache/iotdb/udf/SeasonalStanUDTF.java`：季节性变体
-- `src/main/java/org/apache/iotdb/udf/StanUDTFNABV2.java`：历史版本，仅保留代码，不再作为文档主线
-
+- `pom.xml`：Maven 构建配置
